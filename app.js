@@ -12,8 +12,12 @@
   function fmt(n) { return Number(n).toLocaleString("en-US"); }
   function etDay(iso) { return new Date(iso).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York" }); }
   function etTime(iso) { return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }) + " ET"; }
-  // Voting closes at midnight; show it as 11:59 PM
-  function closeAt(w) { var d = new Date(new Date(w.closes_at).getTime() - 60000).toISOString(); return etDay(d) + " at " + etTime(d); }
+  // Closing time as people read it (a midnight close shows as 11:59 PM the day before)
+  function closeAt(w) {
+    var t = new Date(w.closes_at);
+    if (etTime(t.toISOString()).indexOf("12:00 AM") === 0) t = new Date(t.getTime() - 60000);
+    return etDay(t.toISOString()) + " at " + etTime(t.toISOString());
+  }
   function liveLine(w) { return DB.isLive(w) ? '<span class="live-dot" aria-hidden="true"></span>Live · updates until ' + closeAt(w) : "Final"; }
   function weekLabel(w) { return w.week === 0 ? "Test week" : "Week " + w.week; }
   function logo(t, size) {
@@ -106,7 +110,7 @@
       '<p class="lede">' + (next ? "The first poll goes live " + etDay(next.release_at) + " at " + etTime(next.release_at) +
         ". Voting opens " + etDay(next.opens_at) + " at " + etTime(next.opens_at) + "." : "No poll has been released yet.") + "</p></div></div>" +
       '<div class="layout"><section class="main-col panel panel-pad"><h2>How it works</h2>' +
-      '<p class="panel-note" style="color:var(--fg)">Every Sunday from 2:00 AM to 11:59 PM ET, voters rank their Top 25. Results go live at 1:00 PM ET and update as ballots come in. ' +
+      '<p class="panel-note" style="color:var(--fg)">Each week, voting opens Sunday at 2:00 AM ET and stays open until Thursday at noon ET, before Thursday night\'s games. Results go live Sunday at 1:00 PM ET and update as ballots come in. ' +
       "A 1st-place vote is worth 25 points, 2nd is worth 24, down to 1 point for 25th, just like the AP poll.</p>" +
       '<p class="panel-note">The Media Poll comes from 50 invited voters, and every media ballot is public. The Fan Poll is open to anyone with a Google account; fan ballots stay private and only the totals are shown.</p></section>' +
       '<aside class="side-col">' + voteCard() + "</aside></div>";
@@ -609,7 +613,7 @@
     var list = latest ? latest.ranks.map(function (id, i) { var t = team(id); return "<div><b>" + (i + 1) + "</b>" + logo(t, "sm") + esc(t.name) + "</div>"; }).join("") : "";
     app.innerHTML =
       '<section class="panel done"><div class="eyebrow"><b>Voting is closed</b></div><h1>' + (next ? weekLabel(next) + " opens " + etDay(next.opens_at) : "See you next season") + "</h1>" +
-      '<p class="lede">' + (next ? "Voting runs " + etDay(next.opens_at) + " from " + etTime(next.opens_at) + " to 11:59 PM ET, with results live from " + etTime(next.release_at) + ". Your last ballot will be filled in so you only have to adjust it." : "The season's polls are done.") + "</p>" +
+      '<p class="lede">' + (next ? "Voting opens " + etDay(next.opens_at) + " at " + etTime(next.opens_at) + " and stays open until " + closeAt(next) + ". Results go live " + etDay(next.release_at) + " at " + etTime(next.release_at) + ". Your last ballot will be filled in so you only have to adjust it." : "The season's polls are done.") + "</p>" +
       (released ? '<a class="btn btn-primary" href="#poll">See the ' + weekLabel(released) + " poll</a>" : "") +
       (latest ? '<h2 style="margin-top:16px">Your Week ' + latest.week + " " + (latest.kind === "media" ? "media " : "") + "ballot</h2><div class=\"done-list\">" + list + "</div>" : "") +
       "</section>";
@@ -710,6 +714,17 @@
     }
   }
 
+  // ---------- Unsubscribe from reminder emails ----------
+  async function renderUnsubscribe(token) {
+    loading("Unsubscribing...");
+    var ok = false;
+    try { ok = /^[0-9a-f-]{36}$/i.test(token) && await DB.unsubscribe(token); } catch (e) { ok = false; }
+    app.innerHTML = '<section class="panel done"><div class="eyebrow"><b>Reminder emails</b></div>' +
+      (ok ? '<h1>You\'re unsubscribed</h1><p class="lede">You won\'t get Sunday reminder emails from the CFA Top 25 anymore. You can still vote any week.</p>'
+          : '<h1>That link didn\'t work</h1><p class="lede">It may be incomplete. Email tj@garnetconnection.com and we\'ll take you off the list.</p>') +
+      '<a class="btn btn-primary" href="#poll">See the poll</a></section>';
+  }
+
   // ---------- Router ----------
   function showError(err) { app.innerHTML = errorBox(err); }
   var refreshTimer = null;
@@ -733,6 +748,7 @@
     else if (h === "vote") p = renderVote();
     else if (h === "admin") p = renderAdmin();
     else if (h.indexOf("enter-") === 0) p = renderEnter(decodeURIComponent(h.slice(6)));
+    else if (h.indexOf("unsubscribe-") === 0) p = renderUnsubscribe(h.slice(12));
     else p = renderPoll("media");
     Promise.resolve(p).catch(showError);
     window.scrollTo(0, 0);
