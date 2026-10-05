@@ -298,7 +298,7 @@
       '<div class="pager"><a href="#ballots">← All ' + weekLabel(w) + " ballots</a>" + pager + "</div>" +
       '<section class="panel ballot-head"><div class="ballot-who"><span class="avatar">' + esc(initials(b.name)) + "</span><div>" +
       '<div class="eyebrow"><b>Media Poll</b> · ' + weekLabel(w) + "</div><h1>" + esc(b.name) + "</h1>" +
-      '<div class="v-outlet">' + (b.outlet ? esc(b.outlet) + " · " : "") + "Submitted " + etDay(b.submitted) + " at " + etTime(b.submitted) + "</div></div></div>" +
+      '<div class="v-outlet">' + (b.outlet ? esc(b.outlet) + " · " : "") + (b.entered ? "Posted on social media · entered by CFA " : "Submitted ") + etDay(b.submitted) + " at " + etTime(b.submitted) + "</div></div></div>" +
       '<div class="stats"><div class="stat"><div class="eyebrow">In the poll\'s Top 25</div><div class="num">' + inTop + " of 25</div></div>" +
       '<div class="stat"><div class="eyebrow">Biggest swing</div><div>' + swingText + "</div></div></div></section>" +
       '<section class="panel" style="margin-top:16px"><div class="ballot-grid">' + lines + "</div>" +
@@ -348,7 +348,33 @@
     drawVoteShell();
   }
 
-  function draftKey() { return "cfa-draft:" + DB.user().id + ":" + CFA.SEASON + ":" + vote.week.week + ":" + vote.kind; }
+  function draftKey() { return "cfa-draft:" + DB.user().id + ":" + (vote.admin ? vote.admin.email + ":" : "") + CFA.SEASON + ":" + vote.week.week + ":" + vote.kind; }
+
+  // ---------- Admin: enter a media voter's ballot ----------
+  var enterWeekChoice = {};
+  async function renderEnter(email) {
+    if (!DB.user() || !DB.isAdmin()) { app.innerHTML = '<div class="panel panel-pad"><h2>Admins only</h2></div>'; return; }
+    loading();
+    var voters = await DB.listMediaVoters();
+    var v = voters.filter(function (x) { return x.email === email; })[0];
+    if (!v) { app.innerHTML = '<div class="panel panel-pad"><p>That voter isn\'t on the media list. <a href="#admin">Back to admin</a></p></div>'; return; }
+    var weeks = DB.weeks().filter(function (w) { return w.week > 0 && new Date(w.opens_at) <= new Date(); });
+    var def = DB.openWeek() && DB.openWeek().week > 0 ? DB.openWeek() : (DB.releasedWeek() || weeks[weeks.length - 1]);
+    var w = DB.weekByNumber(enterWeekChoice[email]) || def;
+    if (!w) { app.innerHTML = '<div class="panel panel-pad"><p>No poll week has opened yet.</p></div>'; return; }
+    var prevW = DB.weekByNumber(w.week - 1);
+    var res = await Promise.all([
+      DB.voterBallots(email), DB.games(w.week), DB.records(w.week),
+      prevW && prevW.week > 0 && DB.isClosed(prevW) ? DB.poll(prevW.week, "media") : null
+    ]);
+    vote = {
+      week: w, mine: res[0], games: res[1], records: res[2], oppRanks: rankMap(res[3]),
+      kinds: ["media"], kind: "media", slots: null, active: 0, q: "", conf: "", note: "",
+      admin: { email: email, name: v.name, outlet: v.outlet, weeks: weeks }
+    };
+    loadSlots();
+    drawVoteShell();
+  }
 
   function loadSlots() {
     var kind = vote.kind, wk = vote.week.week;
@@ -359,16 +385,22 @@
     vote.last = last || null;
     if (current) {
       vote.slots = current.ranks.slice();
-      vote.note = "<b>You submitted this ballot " + etDay(current.updated_at) + " at " + etTime(current.updated_at) + ".</b> You can change it until " + closeAt(vote.week) + ".";
+      vote.note = vote.admin
+        ? "<b>" + esc(vote.admin.name) + " already has a " + weekLabel(vote.week) + " ballot</b> (" + (current.entered_by_admin ? "entered by CFA" : "they voted on the site") + ", " + etDay(current.updated_at) + " at " + etTime(current.updated_at) + "). Saving replaces it."
+        : "<b>You submitted this ballot " + etDay(current.updated_at) + " at " + etTime(current.updated_at) + ".</b> You can change it until " + closeAt(vote.week) + ".";
     } else if (draft && draft.length === 25) {
       vote.slots = draft;
       vote.note = "<b>Your draft is saved on this device.</b> It isn't counted until you submit.";
     } else if (last) {
       vote.slots = last.ranks.slice();
-      vote.note = "<b>Your Week " + last.week + " ballot is filled in.</b> Each team shows how it did this weekend. Move teams, swap in new ones, then submit.";
+      vote.note = vote.admin
+        ? "<b>" + esc(vote.admin.name) + "'s Week " + last.week + " ballot is filled in.</b> Adjust it to match what they posted, then save."
+        : "<b>Your Week " + last.week + " ballot is filled in.</b> Each team shows how it did this weekend. Move teams, swap in new ones, then submit.";
     } else {
       vote.slots = new Array(25).fill(null);
-      vote.note = "<b>Welcome to the CFA Top 25.</b> Pick a slot on your ballot, then pick a team. Rank all 25 to submit.";
+      vote.note = vote.admin
+        ? "<b>Enter " + esc(vote.admin.name) + "'s ballot.</b> Pick a slot, then a team, in the order they posted."
+        : "<b>Welcome to the CFA Top 25.</b> Pick a slot on your ballot, then pick a team. Rank all 25 to submit.";
     }
     var empty = vote.slots.indexOf(null);
     vote.active = empty < 0 ? 0 : empty;
@@ -386,8 +418,15 @@
 
     app.innerHTML =
       (w.week === 0 ? '<div class="preview-banner"><b>Test week</b> Only admins can see this. Ballots here are deleted when you end the test week.</div>' : "") +
-      '<div class="page-head"><div><div class="eyebrow"><b>' + weekLabel(w) + " ballot</b> · Open until " + closeAt(w) + "</div>" +
-      '<h1>Your Top 25</h1><p class="lede">Pick a slot, then pick a team. Drag teams or use the arrows to reorder.</p></div>' +
+      (vote.admin
+        ? '<div class="page-head"><div><div class="eyebrow"><b>Admin</b> · Entering a media ballot · <a href="#admin">Back to admin</a></div>' +
+          "<h1>" + esc(vote.admin.name) + "</h1>" +
+          '<p class="lede">' + esc(vote.admin.outlet || vote.admin.email) + ". The public ballot will say it was entered by CFA from their posted ballot. If they vote on the site themselves, their ballot replaces this one.</p>" +
+          '<div class="field" style="margin-top:12px;max-width:240px"><label for="enter-week">Poll week</label><select id="enter-week">' +
+          vote.admin.weeks.map(function (x) { return '<option value="' + x.week + '"' + (x.week === w.week ? " selected" : "") + ">" + weekLabel(x) + "</option>"; }).join("") +
+          "</select></div></div>"
+        : '<div class="page-head"><div><div class="eyebrow"><b>' + weekLabel(w) + " ballot</b> · Open until " + closeAt(w) + "</div>" +
+          '<h1>Your Top 25</h1><p class="lede">Pick a slot, then pick a team. Drag teams or use the arrows to reorder.</p></div>') +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + kindTabs + '<button type="button" class="btn btn-ghost" id="clear">Clear ballot</button></div></div>' +
       '<div id="vote-body"><div class="prefill-note"><span id="vote-note"></span><button type="button" class="btn btn-ghost" id="reset" hidden>Reset to last week</button></div>' +
       '<div class="vote-grid">' +
@@ -425,6 +464,11 @@
       vote.slots = vote.last.ranks.slice(); vote.active = 0; changed();
     });
     document.getElementById("submit").addEventListener("click", submit);
+    var ew = document.getElementById("enter-week");
+    if (ew) ew.addEventListener("change", function () {
+      enterWeekChoice[vote.admin.email] = Number(ew.value);
+      renderEnter(vote.admin.email).catch(showError);
+    });
     drawAll();
   }
 
@@ -524,7 +568,8 @@
     var btn = document.getElementById("submit");
     btn.disabled = true; btn.textContent = "Saving…";
     try {
-      await DB.submitBallot(vote.week.week, vote.kind, vote.slots.slice());
+      if (vote.admin) await DB.adminSetMediaBallot(vote.week.week, vote.admin.email, vote.slots.slice());
+      else await DB.submitBallot(vote.week.week, vote.kind, vote.slots.slice());
     } catch (err) {
       console.error(err);
       var msg = /row-level security/i.test(err.message || "")
@@ -535,6 +580,17 @@
       return;
     }
     store(draftKey(), null);
+    if (vote.admin) {
+      var who = vote.admin;
+      document.getElementById("vote-body").innerHTML =
+        '<section class="panel done"><div class="eyebrow"><b>Ballot saved</b></div><h1>' + esc(who.name) + " · " + weekLabel(vote.week) + "</h1>" +
+        '<p class="lede">It counts in the Media Poll now and shows on the Media Ballots page as entered by CFA.</p>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center"><button type="button" class="btn btn-ghost" id="edit">Edit again</button>' +
+        '<a class="btn btn-primary" href="#admin">Back to admin</a></div></section>';
+      document.getElementById("edit").addEventListener("click", function () { renderEnter(who.email).catch(showError); });
+      window.scrollTo(0, 0);
+      return;
+    }
     var list = vote.slots.map(function (id, i) { var t = team(id); return "<div><b>" + (i + 1) + "</b>" + logo(t, "sm") + esc(t.name) + "</div>"; }).join("");
     document.getElementById("vote-body").innerHTML =
       '<section class="panel done"><div class="eyebrow"><b>' + (vote.kind === "media" ? "Media ballot" : "Ballot") + " saved</b></div><h1>You're in for " + weekLabel(vote.week) + "</h1>" +
@@ -589,7 +645,8 @@
 
     var voterRows = voters.map(function (v) {
       return "<tr><td>" + esc(v.name) + '</td><td class="v-outlet">' + esc(v.outlet || "") + '</td><td class="v-outlet">' + esc(v.email) + "</td>" +
-        '<td class="r"><button type="button" class="btn btn-ghost btn-sm" data-remove-voter="' + esc(v.email) + '">Remove</button></td></tr>';
+        '<td class="r" style="white-space:nowrap"><a class="btn btn-ghost btn-sm" href="#enter-' + encodeURIComponent(v.email) + '">Enter ballot</a> ' +
+        '<button type="button" class="btn btn-ghost btn-sm" data-remove-voter="' + esc(v.email) + '">Remove</button></td></tr>';
     }).join("") || '<tr><td colspan="4" class="no-results">No media voters yet. Add them above.</td></tr>';
 
     app.innerHTML =
@@ -664,7 +721,7 @@
     if (["poll", "fans", "compare", "ballots", ""].indexOf(h) >= 0 && DB.isLive(DB.releasedWeek())) {
       refreshTimer = setTimeout(function () { if ((location.hash || "#poll").slice(1) === h) route(); }, 120000);
     }
-    var navKey = h.indexOf("ballot") === 0 ? "ballots" : h === "vote" ? "vote" : h === "admin" ? "admin" : "poll";
+    var navKey = h.indexOf("ballot") === 0 ? "ballots" : h === "vote" ? "vote" : (h === "admin" || h.indexOf("enter-") === 0) ? "admin" : "poll";
     document.querySelectorAll("[data-nav]").forEach(function (a) {
       if (a.dataset.nav === navKey) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
@@ -675,6 +732,7 @@
     else if (h.indexOf("ballot-") === 0) p = renderBallot(h.slice(7));
     else if (h === "vote") p = renderVote();
     else if (h === "admin") p = renderAdmin();
+    else if (h.indexOf("enter-") === 0) p = renderEnter(decodeURIComponent(h.slice(6)));
     else p = renderPoll("media");
     Promise.resolve(p).catch(showError);
     window.scrollTo(0, 0);

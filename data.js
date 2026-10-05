@@ -119,7 +119,7 @@ window.team = (function () {
       return once("media:" + week, async function () {
         var rows = check(await sb.rpc("media_ballots", { p_season: CFA.SEASON, p_week: week })) || [];
         return rows.map(function (r) {
-          return { id: String(r.ballot_id), name: r.name, outlet: r.outlet || "", ranks: r.ranks, submitted: r.submitted_at };
+          return { id: String(r.ballot_id), name: r.name, outlet: r.outlet || "", ranks: r.ranks, submitted: r.submitted_at, entered: !!r.entered_by_admin };
         });
       });
     },
@@ -149,8 +149,10 @@ window.team = (function () {
       var u = DB.user();
       if (!u) return Promise.resolve([]);
       return once("mine:" + u.id, async function () {
-        return check(await sb.from("ballots").select("season, week, kind, ranks, updated_at")
-          .eq("user_id", u.id).eq("season", CFA.SEASON).order("week", { ascending: false })) || [];
+        var email = String(u.email || "").toLowerCase();
+        return check(await sb.from("ballots").select("season, week, kind, ranks, updated_at, entered_by_admin")
+          .or("user_id.eq." + u.id + ",voter_email.eq.\"" + email + "\"")
+          .eq("season", CFA.SEASON).order("week", { ascending: false })) || [];
       });
     },
     submitBallot: async function (week, kind, ranks) {
@@ -173,6 +175,15 @@ window.team = (function () {
     },
     removeMediaVoter: async function (email) {
       check(await sb.from("media_voters").delete().eq("email", email));
+    },
+    // All of one media voter's ballots (admin only)
+    voterBallots: async function (email) {
+      return check(await sb.from("ballots").select("season, week, kind, ranks, updated_at, entered_by_admin")
+        .eq("voter_email", email).eq("kind", "media").eq("season", CFA.SEASON).order("week", { ascending: false })) || [];
+    },
+    adminSetMediaBallot: async function (week, email, ranks) {
+      check(await sb.rpc("admin_set_media_ballot", { p_season: CFA.SEASON, p_week: week, p_email: email, p_ranks: ranks }));
+      cache = {};
     },
     notVoted: async function (week) {
       return check(await sb.rpc("media_not_voted", { p_season: CFA.SEASON, p_week: week })) || [];
