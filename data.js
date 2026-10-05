@@ -82,14 +82,17 @@ window.team = (function () {
     nextWeek: function () {
       return state.weeks.filter(function (w) { return w.week > 0 && t(w.opens_at) > now(); })[0] || null;
     },
-    // The most recent real week whose voting has closed (its results are public)
+    // The most recent real week whose results are public (from 1 PM Sunday; live until voting closes)
     releasedWeek: function () {
-      var done = state.weeks.filter(function (w) { return w.week > 0 && t(w.closes_at) <= now(); });
+      var done = state.weeks.filter(function (w) { return w.week > 0 && t(w.release_at || w.closes_at) <= now(); });
       return done[done.length - 1] || null;
     },
+    // Results are still changing because voting hasn't closed
+    isLive: function (w) { return !!w && now() < t(w.closes_at); },
     weekByNumber: function (n) { return state.weeks.filter(function (w) { return w.week === n; })[0] || null; },
     isClosed: function (w) { return !!w && t(w.closes_at) <= now(); },
     reloadWeeks: function () { return loadWeeks(); },
+    clearCache: function () { cache = {}; },
 
     // ---------- Results ----------
     // AP-style totals for one poll. Public after the week closes; admins can see them anytime.
@@ -102,6 +105,14 @@ window.team = (function () {
         rows.sort(function (a, b) { return b.pts - a.pts || b.fpv - a.fpv || team(a.teamId).name.localeCompare(team(b.teamId).name); });
         rows.forEach(function (r, i) { r.rank = i + 1; });
         return { ranked: rows.slice(0, 25), others: rows.slice(25), ballotCount: rows.length ? rows[0].count : 0 };
+      });
+    },
+    // Public ballot counts for a week: media submitted, fan submitted, media voters invited
+    counts: function (week) {
+      return once("counts:" + week, async function () {
+        var rows = check(await sb.rpc("ballot_counts", { p_season: CFA.SEASON, p_week: week })) || [];
+        var r = rows[0] || {};
+        return { media: Number(r.media || 0), fan: Number(r.fan || 0), mediaVoters: Number(r.media_voters || 0) };
       });
     },
     mediaBallots: function (week) {
@@ -150,6 +161,7 @@ window.team = (function () {
       ));
       delete cache["mine:" + u.id];
       delete cache["poll:" + week + ":" + kind];
+      delete cache["counts:" + week];
     },
 
     // ---------- Admin ----------
@@ -172,7 +184,7 @@ window.team = (function () {
     },
     openTestWeek: async function () {
       var start = new Date(now() - 60 * 1000).toISOString(), end = new Date(now() + 2 * 3600 * 1000).toISOString();
-      check(await sb.from("weeks").upsert({ season: CFA.SEASON, week: 0, opens_at: start, closes_at: end }, { onConflict: "season,week" }));
+      check(await sb.from("weeks").upsert({ season: CFA.SEASON, week: 0, opens_at: start, release_at: start, closes_at: end }, { onConflict: "season,week" }));
       cache = {};
       await loadWeeks();
     },

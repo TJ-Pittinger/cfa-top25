@@ -268,3 +268,6 @@ textarea::placeholder { color: var(--faint); }
 .legal h2 { margin-top: 12px; }
 .legal p, .legal li { color: #d4d4d8; }
 @media (max-width: 640px) { .who-name { display: none; } }
+.live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--up); margin-right: 6px; vertical-align: 1px; animation: pulse 2s infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }

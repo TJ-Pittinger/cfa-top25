@@ -12,6 +12,9 @@
   function fmt(n) { return Number(n).toLocaleString("en-US"); }
   function etDay(iso) { return new Date(iso).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York" }); }
   function etTime(iso) { return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }) + " ET"; }
+  // Voting closes at midnight; show it as 11:59 PM
+  function closeAt(w) { var d = new Date(new Date(w.closes_at).getTime() - 60000).toISOString(); return etDay(d) + " at " + etTime(d); }
+  function liveLine(w) { return DB.isLive(w) ? '<span class="live-dot" aria-hidden="true"></span>Live · updates until ' + closeAt(w) : "Final"; }
   function weekLabel(w) { return w.week === 0 ? "Test week" : "Week " + w.week; }
   function logo(t, size) {
     size = size || "md";
@@ -85,13 +88,14 @@
     var open = DB.openWeek(), next = DB.nextWeek();
     if (open && open.week > 0) {
       return '<div class="panel panel-pad callout"><div class="eyebrow"><b>' + weekLabel(open) + ' voting is open</b></div>' +
-        '<p class="panel-note" style="color:var(--fg)">Ballots close ' + etDay(open.closes_at) + " at " + etTime(open.closes_at) + ". Results post right after.</p>" +
+        '<p class="panel-note" style="color:var(--fg)">Voting closes ' + closeAt(open) + ". " +
+        (new Date(open.release_at) <= new Date() ? "Results are live now and update as ballots come in." : "Results go live " + etDay(open.release_at) + " at " + etTime(open.release_at) + " and update until voting closes.") + "</p>" +
         '<a class="btn btn-primary" href="#vote">Cast your ballot</a></div>';
     }
     if (next) {
       return '<div class="panel panel-pad callout"><div class="eyebrow"><b>' + weekLabel(next) + ' voting</b></div>' +
         '<p class="panel-note" style="color:var(--fg)">Opens ' + etDay(next.opens_at) + " at " + etTime(next.opens_at) +
-        " and closes at " + etTime(next.closes_at) + ". Sign in with Google to vote.</p></div>";
+        " and closes " + closeAt(next) + ". Results go live at " + etTime(next.release_at) + ". Sign in with Google to vote.</p></div>";
     }
     return "";
   }
@@ -99,10 +103,10 @@
   function firstPollEmpty(title) {
     var next = DB.nextWeek() || DB.openWeek();
     return '<div class="page-head"><div><div class="eyebrow"><b>' + esc(title) + "</b></div><h1>CFA Top 25</h1>" +
-      '<p class="lede">' + (next ? "The first poll drops " + etDay(next.closes_at) + " at " + etTime(next.closes_at) +
-        ". Voting opens at " + etTime(next.opens_at) + " that morning." : "No poll has been released yet.") + "</p></div></div>" +
+      '<p class="lede">' + (next ? "The first poll goes live " + etDay(next.release_at) + " at " + etTime(next.release_at) +
+        ". Voting opens " + etDay(next.opens_at) + " at " + etTime(next.opens_at) + "." : "No poll has been released yet.") + "</p></div></div>" +
       '<div class="layout"><section class="main-col panel panel-pad"><h2>How it works</h2>' +
-      '<p class="panel-note" style="color:var(--fg)">Every Sunday from 2:00 AM to 12:00 PM ET, voters rank their Top 25. ' +
+      '<p class="panel-note" style="color:var(--fg)">Every Sunday from 2:00 AM to 11:59 PM ET, voters rank their Top 25. Results go live at 1:00 PM ET and update as ballots come in. ' +
       "A 1st-place vote is worth 25 points, 2nd is worth 24, down to 1 point for 25th, just like the AP poll.</p>" +
       '<p class="panel-note">The Media Poll comes from 50 invited voters, and every media ballot is public. The Fan Poll is open to anyone with a Google account; fan ballots stay private and only the totals are shown.</p></section>' +
       '<aside class="side-col">' + voteCard() + "</aside></div>";
@@ -124,9 +128,13 @@
       DB.poll(w.week, kind),
       prevW && prevW.week > 0 ? DB.poll(prevW.week, kind) : null,
       DB.records(w.week),
-      kind === "media" ? DB.mediaBallots(w.week) : []
+      kind === "media" ? DB.mediaBallots(w.week) : [],
+      DB.counts(w.week)
     ]);
-    var poll = res[0], prev = rankMap(res[1]), records = res[2], ballots = res[3];
+    var poll = res[0], prev = rankMap(res[1]), records = res[2], ballots = res[3], counts = res[4];
+    var countText = kind === "media"
+      ? fmt(counts.media) + " of " + fmt(counts.mediaVoters) + " ballots submitted"
+      : fmt(counts.fan) + " ballots submitted";
     var isFans = kind === "fan";
 
     var body;
@@ -153,7 +161,7 @@
 
     var side;
     if (isFans) {
-      side = '<div class="panel panel-pad"><h2>Fan ballots</h2><div class="big-stat num">' + fmt(poll.ballotCount) + "</div>" +
+      side = '<div class="panel panel-pad"><h2>Fan ballots</h2><div class="big-stat num">' + fmt(counts.fan) + "</div>" +
         '<p class="panel-note">Anyone can vote with a Google account, one ballot per week. Fan ballots are private; only the totals are shown.</p></div>';
     } else if (ballots.length) {
       var voters = ballots.slice(0, 5).map(function (b) {
@@ -161,15 +169,15 @@
           '</span><span class="v-outlet">' + esc(b.outlet) + '</span></span><span class="v-outlet">#1 ' + esc(team(b.ranks[0]).abbr) + "</span></a>";
       }).join("");
       side = '<div class="panel panel-pad"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2>Who voted</h2>' +
-        '<span class="v-outlet num">' + ballots.length + " ballots</span></div>" +
+        '<span class="v-outlet num">' + fmt(counts.media) + " of " + fmt(counts.mediaVoters) + "</span></div>" +
         '<p class="panel-note">Every media ballot is public. Click a name to see their Top 25.</p>' +
         '<div class="voter-list">' + voters + "</div>" +
         '<a class="btn btn-ghost" href="#ballots">See all ' + ballots.length + " ballots</a></div>";
     } else side = "";
 
     app.innerHTML =
-      '<div class="page-head"><div><div class="eyebrow"><b>' + weekLabel(w) + "</b> · Released " + etDay(w.closes_at) + " at " + etTime(w.closes_at) + "</div>" +
-      "<h1>CFA " + (isFans ? "Fan" : "Media") + " Poll</h1></div>" + pollTabs(which) + "</div>" +
+      '<div class="page-head"><div><div class="eyebrow"><b>' + weekLabel(w) + "</b> · " + liveLine(w) + "</div>" +
+      "<h1>CFA " + (isFans ? "Fan" : "Media") + ' Poll</h1><p class="lede num">' + countText + "</p></div>" + pollTabs(which) + "</div>" +
       '<div class="layout">' + body + '<aside class="side-col">' + side + voteCard() + "</aside></div>";
   }
 
@@ -200,7 +208,7 @@
     var note = biggest && biggest.d !== 0 ? "Biggest split: <b>" + esc(biggest.t.name) + "</b>, #" + biggest.a + " with the media and #" + biggest.b + " with fans." : "The two polls line up closely this week.";
 
     app.innerHTML =
-      '<div class="page-head"><div><div class="eyebrow"><b>' + weekLabel(w) + "</b> · " + fmt(m.ballotCount) + " media ballots · " + fmt(f.ballotCount) + " fan ballots</div>" +
+      '<div class="page-head"><div><div class="eyebrow"><b>' + weekLabel(w) + "</b> · " + liveLine(w) + " · " + fmt(m.ballotCount) + " media ballots · " + fmt(f.ballotCount) + " fan ballots</div>" +
       "<h1>Media vs. Fans</h1></div>" + pollTabs("compare") + "</div>" +
       '<div class="layout"><section class="main-col panel"><div class="table-scroll"><table class="poll">' +
       '<thead><tr><th>Team</th><th class="r">Media</th><th class="r">Fans</th><th class="r">Who likes them more</th></tr></thead>' +
@@ -351,7 +359,7 @@
     vote.last = last || null;
     if (current) {
       vote.slots = current.ranks.slice();
-      vote.note = "<b>You submitted this ballot " + etDay(current.updated_at) + " at " + etTime(current.updated_at) + ".</b> You can change it until " + etTime(vote.week.closes_at) + ".";
+      vote.note = "<b>You submitted this ballot " + etDay(current.updated_at) + " at " + etTime(current.updated_at) + ".</b> You can change it until " + closeAt(vote.week) + ".";
     } else if (draft && draft.length === 25) {
       vote.slots = draft;
       vote.note = "<b>Your draft is saved on this device.</b> It isn't counted until you submit.";
@@ -378,7 +386,7 @@
 
     app.innerHTML =
       (w.week === 0 ? '<div class="preview-banner"><b>Test week</b> Only admins can see this. Ballots here are deleted when you end the test week.</div>' : "") +
-      '<div class="page-head"><div><div class="eyebrow"><b>' + weekLabel(w) + " ballot</b> · Open until " + etDay(w.closes_at) + " at " + etTime(w.closes_at) + "</div>" +
+      '<div class="page-head"><div><div class="eyebrow"><b>' + weekLabel(w) + " ballot</b> · Open until " + closeAt(w) + "</div>" +
       '<h1>Your Top 25</h1><p class="lede">Pick a slot, then pick a team. Drag teams or use the arrows to reorder.</p></div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + kindTabs + '<button type="button" class="btn btn-ghost" id="clear">Clear ballot</button></div></div>' +
       '<div id="vote-body"><div class="prefill-note"><span id="vote-note"></span><button type="button" class="btn btn-ghost" id="reset" hidden>Reset to last week</button></div>' +
@@ -530,7 +538,7 @@
     var list = vote.slots.map(function (id, i) { var t = team(id); return "<div><b>" + (i + 1) + "</b>" + logo(t, "sm") + esc(t.name) + "</div>"; }).join("");
     document.getElementById("vote-body").innerHTML =
       '<section class="panel done"><div class="eyebrow"><b>' + (vote.kind === "media" ? "Media ballot" : "Ballot") + " saved</b></div><h1>You're in for " + weekLabel(vote.week) + "</h1>" +
-      '<p class="lede">You can change it until ' + etTime(vote.week.closes_at) + ". Results post right after voting closes.</p>" +
+      '<p class="lede">You can change it until ' + closeAt(vote.week) + ". Results are live from " + etTime(vote.week.release_at) + " and update until voting closes.</p>" +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center"><button type="button" class="btn btn-ghost" id="edit">Edit ballot</button>' +
       '<a class="btn btn-primary" href="#poll">See the current poll</a></div><div class="done-list">' + list + "</div></section>";
     document.getElementById("edit").addEventListener("click", function () { renderVote().catch(showError); });
@@ -545,7 +553,7 @@
     var list = latest ? latest.ranks.map(function (id, i) { var t = team(id); return "<div><b>" + (i + 1) + "</b>" + logo(t, "sm") + esc(t.name) + "</div>"; }).join("") : "";
     app.innerHTML =
       '<section class="panel done"><div class="eyebrow"><b>Voting is closed</b></div><h1>' + (next ? weekLabel(next) + " opens " + etDay(next.opens_at) : "See you next season") + "</h1>" +
-      '<p class="lede">' + (next ? "Voting runs " + etTime(next.opens_at) + " to " + etTime(next.closes_at) + " on " + etDay(next.opens_at) + ". Your last ballot will be filled in so you only have to adjust it." : "The season's polls are done.") + "</p>" +
+      '<p class="lede">' + (next ? "Voting runs " + etDay(next.opens_at) + " from " + etTime(next.opens_at) + " to 11:59 PM ET, with results live from " + etTime(next.release_at) + ". Your last ballot will be filled in so you only have to adjust it." : "The season's polls are done.") + "</p>" +
       (released ? '<a class="btn btn-primary" href="#poll">See the ' + weekLabel(released) + " poll</a>" : "") +
       (latest ? '<h2 style="margin-top:16px">Your Week ' + latest.week + " " + (latest.kind === "media" ? "media " : "") + "ballot</h2><div class=\"done-list\">" + list + "</div>" : "") +
       "</section>";
@@ -566,8 +574,8 @@
     var res = await Promise.all([
       DB.listMediaVoters(),
       focus ? DB.notVoted(focus.week) : [],
-      focus ? DB.ballotCount(focus.week, "media") : 0,
-      focus ? DB.ballotCount(focus.week, "fan") : 0,
+      focus ? DB.counts(focus.week).then(function (c) { return c.media; }) : 0,
+      focus ? DB.counts(focus.week).then(function (c) { return c.fan; }) : 0,
       DB.lastScoresUpdate()
     ]);
     var voters = res[0], notVoted = res[1], mediaCount = res[2], fanCount = res[3], scores = res[4];
@@ -598,7 +606,7 @@
       '<div class="table-scroll"><table class="poll" style="min-width:560px"><thead><tr><th>Name</th><th>Outlet</th><th>Google email</th><th></th></tr></thead><tbody>' + voterRows + "</tbody></table></div></section>" +
 
       '<section class="panel panel-pad"><h2>Test week</h2>' +
-      (test ? '<p class="panel-note">A test week is ' + (DB.isClosed(test) ? "closed" : "open until " + etTime(test.closes_at)) + '. Only admins can see it. <a href="#vote">Try the ballot</a>.</p>' +
+      (test ? '<p class="panel-note">A test week is ' + (DB.isClosed(test) ? "closed" : "open until " + closeAt(test)) + '. Only admins can see it. <a href="#vote">Try the ballot</a>.</p>' +
               '<div id="test-results"></div><button type="button" class="btn btn-ghost" id="end-test">End test week and delete its ballots</button>'
             : '<p class="panel-note">Open a two-hour voting window only admins can see, to try the ballot before a real Sunday. Make sure you\'re on the media list to test a media ballot.</p>' +
               '<button type="button" class="btn btn-ghost" id="open-test">Open a test week</button>') + "</section>" +
@@ -647,8 +655,15 @@
 
   // ---------- Router ----------
   function showError(err) { app.innerHTML = errorBox(err); }
+  var refreshTimer = null;
   function route() {
+    DB.clearCache();
+    clearTimeout(refreshTimer);
     var h = (location.hash || "#poll").slice(1);
+    // While results are live, refresh the poll pages every 2 minutes
+    if (["poll", "fans", "compare", "ballots", ""].indexOf(h) >= 0 && DB.isLive(DB.releasedWeek())) {
+      refreshTimer = setTimeout(function () { if ((location.hash || "#poll").slice(1) === h) route(); }, 120000);
+    }
     var navKey = h.indexOf("ballot") === 0 ? "ballots" : h === "vote" ? "vote" : h === "admin" ? "admin" : "poll";
     document.querySelectorAll("[data-nav]").forEach(function (a) {
       if (a.dataset.nav === navKey) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
