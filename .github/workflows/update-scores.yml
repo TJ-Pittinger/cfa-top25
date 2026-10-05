@@ -1,0 +1,32 @@
+name: Update scores from ESPN
+
+on:
+  schedule:
+    - cron: "30 5 * * 0"
+    - cron: "30 6 * * 0"
+    - cron: "45 8 * * 0"
+    - cron: "45 10 * * 0"
+  workflow_dispatch:
+    inputs:
+      week:
+        description: "Poll week (leave blank for the next one)"
+        required: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Load scores and records
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          if [ -n "${{ github.event.inputs.week }}" ]; then
+            python tools/update_scores.py --week "${{ github.event.inputs.week }}"
+          else
+            python tools/update_scores.py
+          fi
