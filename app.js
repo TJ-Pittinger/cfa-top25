@@ -311,8 +311,8 @@
   // "Win vs #16 Iowa 32-16 · 6-0". Opponent rank = their CFA Media Poll rank going into the game.
   function gameLine(id, short) {
     var g = vote.games[id];
-    if (!g) {
-      var rec = vote.records[id];
+    if (!g || g.team_score == null) {
+      var rec = (g && g.record) || vote.records[id];
       return '<span class="game">' + (short ? "Bye" : "Bye week" + (rec ? " · " + esc(rec) : "")) + "</span>";
     }
     var o = g.opp_id ? team(g.opp_id) : null;
