@@ -131,6 +131,26 @@ def rows_from_scoreboard(data, week_no, fbs_ids):
     return list(rows.values())
 
 
+TEAM_URL = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/{id}"
+
+
+def bye_rows(week_no, fbs_ids, played):
+    """Teams that didn't play still need their current record (shown as a bye week)."""
+    rows = []
+    for tid in sorted(fbs_ids - played):
+        try:
+            data = http("GET", TEAM_URL.format(id=tid), {"User-Agent": UA, "Accept": "application/json"})
+            items = ((data or {}).get("team", {}).get("record") or {}).get("items") or []
+            rec = next((i.get("summary") for i in items if i.get("type") == "total"), None) or (items[0].get("summary") if items else None)
+        except Exception as e:
+            print("  could not get record for team %s (%s)" % (tid, e))
+            continue
+        if rec:
+            rows.append({"season": SEASON, "week": week_no, "team_id": tid, "opp_id": None, "opp_name": None,
+                         "home": None, "team_score": None, "opp_score": None, "won": None, "record": rec})
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--week", type=int)
@@ -153,6 +173,9 @@ def main():
 
     rows = rows_from_scoreboard(fetch_scoreboard(dates), week["week"], fbs_ids)
     print("Finals found for %d FBS teams" % len(rows))
+    byes = bye_rows(week["week"], fbs_ids, {r["team_id"] for r in rows})
+    print("Records for %d teams without a game this week" % len(byes))
+    rows += byes
     for r in sorted(rows, key=lambda r: r["team_id"])[:5]:
         print("  sample:", r)
     if args.dry_run or not rows:
