@@ -36,6 +36,30 @@
       img.replaceWith(span);
     }
   }, true);
+  // Links for media voters: outlet website and X profile
+  function normUrl(u) {
+    u = String(u || "").trim();
+    if (!u) return null;
+    if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+    return /^https?:\/\/[^\s"'<>]+\.[^\s"'<>]+$/i.test(u) ? u : undefined;
+  }
+  function normHandle(h) {
+    h = String(h || "").trim().replace(/^https?:\/\/(www\.)?(x|twitter)\.com\//i, "").replace(/^@/, "").replace(/[\/?#].*$/, "");
+    if (!h) return null;
+    return /^[A-Za-z0-9_]{1,15}$/.test(h) ? h : undefined;
+  }
+  function outletLink(name, url) {
+    if (!name && !url) return "";
+    var label = esc(name || url.replace(/^https?:\/\/(www\.)?/i, "").replace(/\/$/, ""));
+    return url ? '<a class="ext" href="' + esc(url) + '" target="_blank" rel="noopener">' + label + "</a>" : label;
+  }
+  function xLink(handle) {
+    return handle ? '<a class="ext" href="https://x.com/' + esc(handle) + '" target="_blank" rel="noopener">@' + esc(handle) + "</a>" : "";
+  }
+  function voterLinks(name, url, handle) {
+    return [outletLink(name, url), xLink(handle)].filter(Boolean).join(" · ");
+  }
+
   function initials(name) { return String(name || "?").split(/\s+/).map(function (p) { return p[0] || ""; }).join("").slice(0, 2).toUpperCase(); }
   var ICON = {
     up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>',
@@ -260,7 +284,7 @@
         var where = tid ? " · has " + esc(team(tid).abbr) + " #" + (b.ranks.indexOf(tid) + 1) : "";
         return '<tr class="voter-row"><td><div class="team-cell"><span class="avatar">' + esc(initials(b.name)) + "</span>" +
           '<div style="min-width:0"><a class="v-name" style="color:var(--accent)" href="#ballot-' + esc(b.id) + '">' + esc(b.name) + "</a>" +
-          '<div class="v-outlet">' + esc(b.outlet) + where + "</div></div></div></td>" +
+          '<div class="v-outlet">' + voterLinks(b.outlet, b.outletUrl, b.xHandle) + where + "</div></div></div></td>" +
           '<td><div class="top3">' + b.ranks.slice(0, 3).map(function (id) { return logo(team(id), "sm"); }).join("") + "</div></td>" +
           '<td class="take">' + esc(hottestTake(b, pr)) + "</td>" +
           '<td class="r"><a href="#ballot-' + esc(b.id) + '">View →</a></td></tr>';
@@ -302,7 +326,8 @@
       '<div class="pager"><a href="#ballots">← All ' + weekLabel(w) + " ballots</a>" + pager + "</div>" +
       '<section class="panel ballot-head"><div class="ballot-who"><span class="avatar">' + esc(initials(b.name)) + "</span><div>" +
       '<div class="eyebrow"><b>Media Poll</b> · ' + weekLabel(w) + "</div><h1>" + esc(b.name) + "</h1>" +
-      '<div class="v-outlet">' + (b.outlet ? esc(b.outlet) + " · " : "") + (b.entered ? "Posted on social media · entered by CFA " : "Submitted ") + etDay(b.submitted) + " at " + etTime(b.submitted) + "</div></div></div>" +
+      (b.outlet || b.outletUrl || b.xHandle ? '<div class="v-links">' + voterLinks(b.outlet, b.outletUrl, b.xHandle) + "</div>" : "") +
+      '<div class="v-outlet">' + (b.entered ? "Posted on social media · entered by CFA " : "Submitted ") + etDay(b.submitted) + " at " + etTime(b.submitted) + "</div></div></div>" +
       '<div class="stats"><div class="stat"><div class="eyebrow">In the poll\'s Top 25</div><div class="num">' + inTop + " of 25</div></div>" +
       '<div class="stat"><div class="eyebrow">Biggest swing</div><div>' + swingText + "</div></div></div></section>" +
       '<section class="panel" style="margin-top:16px"><div class="ballot-grid">' + lines + "</div>" +
@@ -647,11 +672,13 @@
           notVoted.map(function (v) { return esc(v.name); }).join(", ") + "</p>" : '<p class="panel-note">Every media voter has voted.</p>')
       : '<p class="panel-note">No poll week has opened yet.</p>';
 
-    var voterRows = voters.map(function (v) {
-      return "<tr><td>" + esc(v.name) + '</td><td class="v-outlet">' + esc(v.outlet || "") + '</td><td class="v-outlet">' + esc(v.email) + "</td>" +
-        '<td class="r" style="white-space:nowrap"><a class="btn btn-ghost btn-sm" href="#enter-' + encodeURIComponent(v.email) + '">Enter ballot</a> ' +
+    var voterRows = voters.map(function (v, i) {
+      var links = [v.outlet_url ? outletLink("Website", v.outlet_url) : "", xLink(v.x_handle)].filter(Boolean).join(" · ");
+      return '<tr data-row="' + i + '"><td>' + esc(v.name) + '</td><td class="v-outlet">' + esc(v.outlet || "") + '</td><td class="v-outlet">' + (links || "—") + '</td><td class="v-outlet">' + esc(v.email) + "</td>" +
+        '<td class="r" style="white-space:nowrap"><button type="button" class="btn btn-ghost btn-sm" data-edit-voter="' + i + '">Edit</button> ' +
+        '<a class="btn btn-ghost btn-sm" href="#enter-' + encodeURIComponent(v.email) + '">Enter ballot</a> ' +
         '<button type="button" class="btn btn-ghost btn-sm" data-remove-voter="' + esc(v.email) + '">Remove</button></td></tr>';
-    }).join("") || '<tr><td colspan="4" class="no-results">No media voters yet. Add them above.</td></tr>';
+    }).join("") || '<tr><td colspan="5" class="no-results">No media voters yet. Add them above.</td></tr>';
 
     app.innerHTML =
       '<div class="page-head"><div><div class="eyebrow"><b>Admin</b></div><h1>Run the poll</h1></div></div>' +
@@ -659,12 +686,12 @@
       '<section class="panel panel-pad"><h2>' + (focus ? (open ? weekLabel(focus) + " · voting open" : weekLabel(focus) + " · final") : "This week") + "</h2>" + status + "</section>" +
 
       '<section class="panel panel-pad"><h2>Add media voters</h2>' +
-      '<p class="panel-note">One voter per line: <b style="color:var(--fg)">Name, Outlet, email</b>. The email must be the Google account they\'ll sign in with. Outlet is optional.</p>' +
-      '<label class="visually-hidden" for="bulk">Voters to add</label><textarea id="bulk" rows="6" placeholder="Jane Smith, Gridiron Weekly, jane@gmail.com"></textarea>' +
+      '<p class="panel-note">One voter per line: <b style="color:var(--fg)">Name, Outlet, email</b>, then optionally their outlet\'s website and X handle. The email must be the Google account they\'ll sign in with. You can add or change links later with <b style="color:var(--fg)">Edit</b>.</p>' +
+      '<label class="visually-hidden" for="bulk">Voters to add</label><textarea id="bulk" rows="6" placeholder="Jane Smith, Gridiron Weekly, jane@gmail.com, gridironweekly.com, @janesmith"></textarea>' +
       '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button type="button" class="btn btn-primary" id="add-voters">Add voters</button><span class="form-error" id="add-msg" role="status"></span></div></section>' +
 
       '<section class="panel" style="grid-column:1/-1"><div class="col-head"><h2>Media voters</h2><span class="v-outlet">' + voters.length + "</span></div>" +
-      '<div class="table-scroll"><table class="poll" style="min-width:560px"><thead><tr><th>Name</th><th>Outlet</th><th>Google email</th><th></th></tr></thead><tbody>' + voterRows + "</tbody></table></div></section>" +
+      '<div class="table-scroll"><table class="poll" style="min-width:760px"><thead><tr><th>Name</th><th>Outlet</th><th>Links</th><th>Google email</th><th></th></tr></thead><tbody>' + voterRows + "</tbody></table></div></section>" +
 
       '<section class="panel panel-pad"><h2>Test week</h2>' +
       (test ? '<p class="panel-note">A test week is ' + (DB.isClosed(test) ? "closed" : "open until " + closeAt(test)) + '. Only admins can see it. <a href="#vote">Try the ballot</a>.</p>' +
@@ -681,17 +708,56 @@
     document.getElementById("add-voters").addEventListener("click", async function () {
       var msg = document.getElementById("add-msg");
       var lines = document.getElementById("bulk").value.split("\n").map(function (l) { return l.trim(); }).filter(Boolean);
-      var rows = [], bad = [];
+      var rows = [], links = [], bad = [];
+      var isEmail = function (p) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p); };
       lines.forEach(function (l) {
         var parts = l.split(",").map(function (p) { return p.trim(); });
-        var email = parts[parts.length - 1].toLowerCase();
-        if (parts.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { bad.push(l); return; }
-        rows.push({ name: parts[0], outlet: parts.length > 2 ? parts.slice(1, -1).join(", ") : null, email: email });
+        var at = -1;
+        parts.forEach(function (p, i) { if (at < 0 && i > 0 && isEmail(p)) at = i; });
+        if (at < 1) { bad.push(l); return; }
+        var email = parts[at].toLowerCase(), url = null, handle = null, ok = true;
+        parts.slice(at + 1).filter(Boolean).forEach(function (p) {
+          if (/^@|^https?:\/\/(www\.)?(x|twitter)\.com\//i.test(p)) { handle = normHandle(p); if (handle === undefined) ok = false; }
+          else { url = normUrl(p); if (url === undefined) ok = false; }
+        });
+        if (!ok) { bad.push(l); return; }
+        rows.push({ name: parts[0], outlet: at > 1 ? parts.slice(1, at).join(", ") : null, email: email });
+        if (url || handle) links.push({ email: email, f: { outlet_url: url, x_handle: handle } });
       });
       if (bad.length) { msg.textContent = "Check these lines: " + bad.join(" | "); return; }
       if (!rows.length) { msg.textContent = "Add at least one line."; return; }
-      try { await DB.addMediaVoters(rows); route(); }
-      catch (e) { msg.textContent = e.message || "Couldn't add voters."; }
+      try {
+        await DB.addMediaVoters(rows);
+        for (var k = 0; k < links.length; k++) await DB.updateMediaVoter(links[k].email, links[k].f);
+        route();
+      } catch (e) { msg.textContent = e.message || "Couldn't add voters."; }
+    });
+    app.querySelectorAll("[data-edit-voter]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var i = Number(b.dataset.editVoter), v = voters[i];
+        var tr = app.querySelector('tr[data-row="' + i + '"]');
+        tr.innerHTML = '<td colspan="5"><div class="edit-voter">' +
+          '<div class="field"><label for="ev-name">Name</label><input id="ev-name" value="' + esc(v.name) + '"></div>' +
+          '<div class="field"><label for="ev-outlet">Outlet</label><input id="ev-outlet" value="' + esc(v.outlet || "") + '"></div>' +
+          '<div class="field"><label for="ev-url">Outlet website</label><input id="ev-url" placeholder="gridironweekly.com" value="' + esc(v.outlet_url || "") + '"></div>' +
+          '<div class="field"><label for="ev-x">X handle</label><input id="ev-x" placeholder="@janesmith" value="' + esc(v.x_handle ? "@" + v.x_handle : "") + '"></div>' +
+          '<div class="edit-actions"><button type="button" class="btn btn-primary btn-sm" id="ev-save">Save</button>' +
+          '<button type="button" class="btn btn-ghost btn-sm" id="ev-cancel">Cancel</button><span class="form-error" id="ev-msg" role="status"></span></div>' +
+          '<p class="panel-note" style="grid-column:1/-1">' + esc(v.email) + "</p></div></td>";
+        document.getElementById("ev-cancel").addEventListener("click", function () { route(); });
+        document.getElementById("ev-save").addEventListener("click", async function () {
+          var name = document.getElementById("ev-name").value.trim();
+          var url = normUrl(document.getElementById("ev-url").value), handle = normHandle(document.getElementById("ev-x").value);
+          var m = document.getElementById("ev-msg");
+          if (!name) { m.textContent = "Add a name."; return; }
+          if (url === undefined) { m.textContent = "That website doesn't look right."; return; }
+          if (handle === undefined) { m.textContent = "X handles are letters, numbers and _ (up to 15)."; return; }
+          try {
+            await DB.updateMediaVoter(v.email, { name: name, outlet: document.getElementById("ev-outlet").value.trim() || null, outlet_url: url, x_handle: handle });
+            route();
+          } catch (e) { m.textContent = e.message || "Couldn't save."; }
+        });
+      });
     });
     app.querySelectorAll("[data-remove-voter]").forEach(function (b) {
       b.addEventListener("click", async function () {

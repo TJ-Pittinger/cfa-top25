@@ -277,3 +277,11 @@ img.tl { background: #f1f1f3; border-radius: 50%; box-sizing: border-box; object
 img.tl.tl-sm { padding: 3px; }
 img.tl.tl-md { padding: 4px; }
 img.tl.tl-lg { padding: 6px; }
+
+/* Media voter links */
+a.ext { color: var(--fg); text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 2px; }
+a.ext:hover { text-decoration-color: var(--accent); }
+.v-links { font-size: 15px; color: var(--muted); margin-top: 4px; }
+.edit-voter { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end; padding: 8px 0; }
+.edit-voter .field input { min-width: 0; width: 100%; }
+.edit-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

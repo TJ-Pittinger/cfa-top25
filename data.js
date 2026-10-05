@@ -119,7 +119,8 @@ window.team = (function () {
       return once("media:" + week, async function () {
         var rows = check(await sb.rpc("media_ballots", { p_season: CFA.SEASON, p_week: week })) || [];
         return rows.map(function (r) {
-          return { id: String(r.ballot_id), name: r.name, outlet: r.outlet || "", ranks: r.ranks, submitted: r.submitted_at, entered: !!r.entered_by_admin };
+          return { id: String(r.ballot_id), name: r.name, outlet: r.outlet || "", ranks: r.ranks, submitted: r.submitted_at, entered: !!r.entered_by_admin,
+                   outletUrl: r.outlet_url || "", xHandle: r.x_handle || "" };
         });
       });
     },
@@ -173,8 +174,15 @@ window.team = (function () {
     addMediaVoters: async function (rows) {
       check(await sb.from("media_voters").upsert(rows, { onConflict: "email" }));
     },
+    updateMediaVoter: async function (email, fields) {
+      check(await sb.from("media_voters").update(fields).eq("email", email));
+    },
     removeMediaVoter: async function (email) {
       check(await sb.from("media_voters").delete().eq("email", email));
+    },
+    // One-click unsubscribe from reminder emails (token comes from the email link)
+    unsubscribe: async function (token) {
+      return !!check(await sb.rpc("unsubscribe", { p_token: token }));
     },
     // All of one media voter's ballots (admin only)
     voterBallots: async function (email) {
