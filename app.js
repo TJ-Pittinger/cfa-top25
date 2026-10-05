@@ -761,7 +761,7 @@
       focus ? DB.counts(focus.week).then(function (c) { return c.media; }) : 0,
       focus ? DB.counts(focus.week).then(function (c) { return c.fan; }) : 0,
       DB.lastScoresUpdate(),
-      DB.mediaRequests("pending").catch(function () { return []; })
+      DB.mediaRequests("pending")
     ]);
     var voters = res[0], notVoted = res[1], mediaCount = res[2], fanCount = res[3], scores = res[4], requests = res[5];
     var requestCards = requests.map(function (r) {

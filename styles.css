@@ -231,7 +231,7 @@ table.poll { width: 100%; border-collapse: collapse; min-width: 520px; }
 .stat { padding: 12px 16px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); }
 .stat .eyebrow { font-size: 11px; }
 .stat div:last-child { font: 800 28px/1.1 var(--display); }
-.ballot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); column-gap: 32px; padding: 8px 20px 12px; }
+.ballot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); column-gap: 32px; padding: 8px 20px 12px; }
 .ballot-line { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #202024; }
 .ballot-line .slot-rank { width: 28px; }
 .ballot-line .team-name { flex: 1; font-size: 15px; }
@@ -312,3 +312,15 @@ a.ext:hover { text-decoration-color: var(--accent); }
 .share-tip { margin: 0; color: var(--muted); font-size: 14px; max-width: 60ch; }
 .share-tip b { color: var(--fg); }
 .share-status { color: var(--up); font-size: 14px; min-height: 20px; }
+.ballot-head .stats { align-items: center; }
+.share-ballot-btn { align-self: center; }
+
+/* Records next to team names */
+.rec-inline { margin-left: 8px; font-weight: 500; font-size: 0.85em; color: var(--muted); }
+.ballot-line .mv { width: 48px; text-align: right; flex: none; }
+.team-btn .nm .rec-inline { margin-left: 5px; }
+
+.tn-wrap { display: flex; align-items: baseline; min-width: 0; overflow: visible; }
+.tn-wrap .tn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tn-wrap .rec-inline { flex: none; white-space: nowrap; }
+.team-btn .nm.tn-wrap { display: flex; }
