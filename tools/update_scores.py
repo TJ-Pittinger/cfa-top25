@@ -18,6 +18,7 @@ import datetime as dt
 import json
 import os
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from zoneinfo import ZoneInfo
@@ -63,15 +64,28 @@ def pick_week(weeks, wanted=None):
 
 
 def game_dates(week):
-    """Monday through Saturday before the poll's Sunday, as ESPN's YYYYMMDD-YYYYMMDD range."""
+    """Monday through Saturday before the poll's Sunday, as a list of YYYYMMDD strings."""
     sunday = dt.datetime.fromisoformat(week["opens_at"].replace("Z", "+00:00")).astimezone(ET).date()
-    start, end = sunday - dt.timedelta(days=6), sunday - dt.timedelta(days=1)
-    return start.strftime("%Y%m%d") + "-" + end.strftime("%Y%m%d")
+    return [(sunday - dt.timedelta(days=n)).strftime("%Y%m%d") for n in range(6, 0, -1)]
 
 
 def fetch_scoreboard(dates):
-    q = urllib.parse.urlencode({"groups": 80, "dates": dates, "limit": 1000})
-    return http("GET", SCOREBOARD + "?" + q, {"User-Agent": UA, "Accept": "application/json"})
+    """ESPN only accepts one date per request, so ask day by day and combine."""
+    events, seen = [], set()
+    for day in dates:
+        q = urllib.parse.urlencode({"groups": 80, "dates": day, "limit": 300})
+        try:
+            data = http("GET", SCOREBOARD + "?" + q, {"User-Agent": UA, "Accept": "application/json"})
+        except urllib.error.HTTPError as e:
+            print("  ESPN returned %s for %s, skipping that day" % (e.code, day))
+            continue
+        day_events = data.get("events", []) if data else []
+        for ev in day_events:
+            if ev.get("id") not in seen:
+                seen.add(ev.get("id"))
+                events.append(ev)
+        print("  %s: %d games" % (day, len(day_events)))
+    return {"events": events}
 
 
 def overall_record(comp):
@@ -135,7 +149,7 @@ def main():
         return
     fbs_ids = {t["id"] for t in db.get("teams?select=id")}
     dates = game_dates(week)
-    print("Poll week %d · games %s · %d FBS teams" % (week["week"], dates, len(fbs_ids)))
+    print("Poll week %d · games %s to %s · %d FBS teams" % (week["week"], dates[0], dates[-1], len(fbs_ids)))
 
     rows = rows_from_scoreboard(fetch_scoreboard(dates), week["week"], fbs_ids)
     print("Finals found for %d FBS teams" % len(rows))
