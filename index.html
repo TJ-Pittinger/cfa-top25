@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CFA Top 25</title>
+<meta name="description" content="The College Football Addiction Top 25: a weekly media poll and fan poll, scored like the AP poll.">
+<meta property="og:title" content="CFA Top 25">
+<meta property="og:description" content="The College Football Addiction weekly Top 25: media poll and fan poll.">
+<meta property="og:image" content="https://cfatop25.com/assets/cfa-logo.png">
+<link rel="icon" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Saira+Extra+Condensed:wght@600;700;800&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="#poll">
+      <span class="brand-badge"><img src="assets/cfa-logo.png" alt="College Football Addiction"></span>
+      <span><span class="brand-name">CFA <span>Top 25</span></span><br><span class="brand-sub">College Football Addiction</span></span>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="#poll" data-nav="poll">Poll</a>
+      <a href="#ballots" data-nav="ballots">Media Ballots</a>
+      <a href="#vote" data-nav="vote" class="btn btn-primary">Vote</a>
+      <span id="auth"></span>
+    </nav>
+  </div>
+</header>
+<main class="wrap" id="app"></main>
+<footer><div class="wrap">College Football Addiction · CFATop25.com · Scored like the AP poll: 25 points for 1st place down to 1 point for 25th. · <a href="privacy.html">Privacy</a></div></footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="teams.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
