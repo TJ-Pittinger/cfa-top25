@@ -324,23 +324,33 @@
       return;
     }
     loading();
-    var res = await Promise.all([DB.mediaBallots(w.week), DB.poll(w.week, "media")]);
-    var ballots = res[0], pr = rankMap(res[1]);
+    var prevW = DB.weekByNumber(w.week - 1);
+    var res = await Promise.all([
+      DB.mediaBallots(w.week), DB.poll(w.week, "media"), DB.records(w.week),
+      prevW && prevW.week > 0 && new Date(prevW.release_at) <= new Date() ? DB.poll(prevW.week, "media") : null
+    ]);
+    var ballots = res[0], pr = rankMap(res[1]), recs = res[2] || {};
+    var hasLast = !!(res[3] && res[3].ranked.length), lastRk = rankMap(res[3]);
     var b = ballots.filter(function (x) { return x.id === id; })[0];
     if (!b) { app.innerHTML = '<div class="panel panel-pad"><p>That ballot could not be found. <a href="#ballots">See all ballots</a></p></div>'; return; }
     var idx = ballots.indexOf(b), prev = ballots[(idx - 1 + ballots.length) % ballots.length], next = ballots[(idx + 1) % ballots.length];
     var inTop = 0, swing = null;
     var lines = b.ranks.map(function (tid, i) {
-      var t = team(tid), p = pr[tid] || null, d = p ? p - (i + 1) : null, diff;
+      var t = team(tid), p = pr[tid] || null, d = p ? p - (i + 1) : null;
       if (p) inTop++;
       if (p && (!swing || Math.abs(d) > Math.abs(swing.d))) swing = { t: t, d: d };
-      if (!p) diff = '<span class="chg new">NR</span>';
-      else if (d > 0) diff = '<span class="chg up">+' + d + "</span>";
-      else if (d < 0) diff = '<span class="chg down">−' + -d + "</span>";
-      else diff = '<span class="chg same">–</span>';
+      var rec = recs[tid] ? '<span class="rec-inline num">' + esc(recs[tid]) + "</span>" : "";
+      var last = "";
+      if (hasLast) {
+        var lw = lastRk[tid] || null, mv = lw ? lw - (i + 1) : null, chg;
+        if (!lw) chg = '<span class="chg new">NEW</span>';
+        else if (mv > 0) chg = '<span class="chg up">▲ ' + mv + "</span>";
+        else if (mv < 0) chg = '<span class="chg down">▼ ' + -mv + "</span>";
+        else chg = '<span class="chg same">–</span>';
+        last = '<span class="poll-pos num">' + (lw ? "Last week #" + lw : "Last week: NR") + '</span><span class="mv">' + chg + "</span>";
+      }
       return '<div class="ballot-line"><span class="slot-rank num">' + (i + 1) + "</span>" + logo(t, "sm") +
-        '<span class="team-name">' + esc(t.name) + '</span><span class="poll-pos num">' + (p ? "Poll #" + p : "Poll: NR") +
-        '</span><span style="width:40px;text-align:right">' + diff + "</span></div>";
+        '<span class="team-name tn-wrap"><span class="tn">' + esc(t.name) + "</span>" + rec + "</span>" + last + "</div>";
     }).join("");
     var swingText = swing && swing.d !== 0 ? esc(swing.t.abbr) + " " + (swing.d > 0 ? "+" : "−") + Math.abs(swing.d) : "None";
     var pre = wk ? w.week + "-" : "";
@@ -354,20 +364,45 @@
       (b.outlet || b.outletUrl || b.xHandle ? '<div class="v-links">' + voterLinks(b.outlet, b.outletUrl, b.xHandle) + "</div>" : "") +
       '<div class="v-outlet">' + (b.entered ? "Posted on social media · entered by CFA " : "Submitted ") + etDay(b.submitted) + " at " + etTime(b.submitted) + "</div></div></div>" +
       '<div class="stats"><div class="stat"><div class="eyebrow">In the poll\'s Top 25</div><div class="num">' + inTop + " of 25</div></div>" +
-      '<div class="stat"><div class="eyebrow">Biggest swing</div><div>' + swingText + "</div></div></div></section>" +
+      '<div class="stat"><div class="eyebrow">Biggest swing</div><div>' + swingText + "</div></div>" +
+      '<button type="button" class="btn btn-primary share-ballot-btn" id="share-ballot">Share this ballot</button></div></section>' +
+      '<section class="panel share-slot" id="share-slot" hidden style="margin-top:16px"></section>' +
       '<section class="panel" style="margin-top:16px"><div class="ballot-grid">' + lines + "</div>" +
-      '<div class="legend">Green: this voter ranked the team higher than the poll. Red: lower. NR: not in the poll\'s Top 25.</div></section>';
+      (hasLast ? '<div class="legend">Last week = the team\'s rank in the ' + weekLabel(prevW) + ' CFA Media Poll. ▲ this voter moved them up from there, ▼ down. NEW: unranked last week.</div>' : "") + "</section>";
+
+    document.getElementById("share-ballot").addEventListener("click", async function () {
+      var slot = document.getElementById("share-slot");
+      if (!slot.hidden) { slot.hidden = true; return; }
+      slot.hidden = false;
+      var records = {};
+      try { records = await DB.records(w.week); } catch (e) { records = {}; }
+      var wl = weekLabel(w);
+      CFAShare.panel(slot, {
+        ranks: b.ranks, kind: "media", weekLabel: wl, name: b.name, outlet: b.outlet, records: records,
+        eyebrow: "Share " + b.name + "'s ballot",
+        link: SITE + "/#ballot-" + w.week + "-" + b.id,
+        shareText: b.name + "'s " + wl + " CFA Top 25 media ballot:"
+      });
+      slot.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   // ---------- Vote ----------
   var vote = null;
 
   // "Win vs #16 Iowa 32-16 · 6-0". Opponent rank = their CFA Media Poll rank going into the game.
+  function recordOf(id) {
+    var g = vote.games[id];
+    return (g && g.record) || vote.records[id] || "";
+  }
+  function recTag(id) {
+    var r = recordOf(id);
+    return r ? '<span class="rec-inline num">' + esc(r) + "</span>" : "";
+  }
   function gameLine(id, short) {
     var g = vote.games[id];
     if (!g || g.team_score == null) {
-      var rec = (g && g.record) || vote.records[id];
-      return '<span class="game">' + (short ? "Bye" : "Bye week" + (rec ? " · " + esc(rec) : "")) + "</span>";
+      return '<span class="game">' + (short ? "Bye" : "Bye week") + "</span>";
     }
     var o = g.opp_id ? team(g.opp_id) : null;
     var oppName = o ? (short ? o.abbr : o.name) : (g.opp_name || "Opponent");
@@ -376,7 +411,7 @@
     var where = g.home === false ? "at" : "vs";
     var score = g.team_score != null ? g.team_score + "-" + g.opp_score : "";
     if (short) return '<span class="game">' + res + " " + score + " " + where + " " + esc(rk + oppName) + "</span>";
-    return '<span class="game">' + res + " " + where + " " + esc(rk + oppName) + " " + score + (g.record ? " · " + esc(g.record) : "") + "</span>";
+    return '<span class="game">' + res + " " + where + " " + esc(rk + oppName) + " " + score + "</span>";
   }
 
   // ---------- Sharing ----------
@@ -569,7 +604,7 @@
     document.getElementById("ballot-title").textContent = vote.kind === "media" ? "Media ballot" : "Ballot";
     var html = vote.slots.map(function (id, i) {
       var t = id ? team(id) : null;
-      var label = t ? logo(t, "sm") + '<span class="slot-team"><span class="team-name">' + esc(t.name) + "</span>" + gameLine(t.id) + "</span>"
+      var label = t ? logo(t, "sm") + '<span class="slot-team"><span class="team-name tn-wrap"><span class="tn">' + esc(t.name) + "</span>" + recTag(t.id) + "</span>" + gameLine(t.id) + "</span>"
                     : '<span class="slot-empty">' + (i === vote.active ? "Pick a team →" : "Empty") + "</span>";
       var tools = t ? '<div class="slot-tools">' +
         '<button type="button" class="icon-btn" data-move="-1" data-i="' + i + '" aria-label="Move ' + esc(t.name) + ' up"' + (i === 0 ? " disabled" : "") + ">" + ICON.up + "</button>" +
@@ -624,7 +659,7 @@
       var on = picked[t.id];
       return '<button type="button" class="team-btn" data-team="' + t.id + '"' + (on ? " disabled" : "") +
         ' aria-label="' + esc(t.name) + (on ? ", ranked " + on : ", add to slot " + (vote.active + 1)) + '">' +
-        logo(t, "sm") + '<span class="tb-text"><span class="nm">' + esc(t.name) + "</span>" + gameLine(t.id, true) + "</span>" +
+        logo(t, "sm") + '<span class="tb-text"><span class="nm tn-wrap"><span class="tn">' + esc(t.name) + "</span>" + recTag(t.id) + "</span>" + gameLine(t.id, true) + "</span>" +
         (on ? '<span class="on num">#' + on + "</span>" : "") + "</button>";
     }).join("") || '<div class="no-results">No teams match that search.</div>';
     grid.querySelectorAll("[data-team]").forEach(function (b) {
@@ -726,7 +761,7 @@
       focus ? DB.counts(focus.week).then(function (c) { return c.media; }) : 0,
       focus ? DB.counts(focus.week).then(function (c) { return c.fan; }) : 0,
       DB.lastScoresUpdate(),
-      DB.mediaRequests("pending")
+      DB.mediaRequests("pending").catch(function () { return []; })
     ]);
     var voters = res[0], notVoted = res[1], mediaCount = res[2], fanCount = res[3], scores = res[4], requests = res[5];
     var requestCards = requests.map(function (r) {
