@@ -105,6 +105,23 @@
       '<span class="who-name">' + esc(name.split(" ")[0]) + "</span></span>" +
       '<button type="button" class="btn btn-ghost btn-sm" id="signout">Sign out</button>';
     document.getElementById("signout").addEventListener("click", function () { DB.signOut(); });
+    if (DB.isAdmin()) refreshBadge();
+  }
+  // Red bubble on the Admin link with the number of media access requests waiting
+  function refreshBadge() {
+    DB.pendingRequestCount().then(function (n) {
+      var a = authBox.querySelector('[data-nav="admin"]');
+      if (!a) return;
+      var old = a.querySelector(".badge");
+      if (old) old.remove();
+      if (n > 0) {
+        var b = document.createElement("span");
+        b.className = "badge";
+        b.textContent = n > 99 ? "99+" : String(n);
+        b.setAttribute("aria-label", n + " media access request" + (n === 1 ? "" : "s") + " waiting");
+        a.appendChild(b);
+      }
+    }).catch(function () {});
   }
   function signInPanel(why) {
     return '<section class="panel done"><div class="eyebrow"><b>Sign in to vote</b></div><h1>Your Top 25</h1>' +
@@ -267,7 +284,7 @@
       .map(function (t) { return '<option value="' + t.id + '">' + esc(t.name) + "</option>"; }).join("");
     app.innerHTML =
       '<div class="page-head"><div><div class="eyebrow"><b>' + weekLabel(w) + "</b> · Media Poll</div><h1>Media Ballots</h1>" +
-      '<p class="lede">How each media voter ranked the teams this week. Fan ballots stay private.</p></div>' +
+      '<p class="lede">How each media voter ranked the teams this week. Fan ballots stay private. <a href="#request-media">Media member? Request access</a></p></div>' +
       '<a href="#poll">← Back to the poll</a></div>' +
       '<div class="filters"><div class="field"><label for="q">Search voters</label><input id="q" type="search" placeholder="Name or outlet"></div>' +
       '<div class="field"><label for="tf">Who ranked</label><select id="tf"><option value="">Any team</option>' + teamOpts + "</select></div></div>" +
@@ -297,8 +314,15 @@
   }
 
   async function renderBallot(id) {
-    var w = DB.releasedWeek();
+    var wk = /^(\d+)-(\d+)$/.exec(id), w;
+    if (wk) { w = DB.weekByNumber(Number(wk[1])); id = wk[2]; } else w = DB.releasedWeek();
     if (!w) { app.innerHTML = firstPollEmpty("Media ballots"); return; }
+    if (new Date(w.release_at) > new Date() && !DB.isAdmin()) {
+      app.innerHTML = '<section class="panel done"><div class="eyebrow"><b>' + weekLabel(w) + ' · Media ballot</b></div><h1>Coming soon</h1>' +
+        '<p class="lede">Media ballots for ' + weekLabel(w) + " go public " + etDay(w.release_at) + " at " + etTime(w.release_at) + ". Voting is open now.</p>" +
+        '<a class="btn btn-primary" href="#vote">Cast your ballot</a></section>';
+      return;
+    }
     loading();
     var res = await Promise.all([DB.mediaBallots(w.week), DB.poll(w.week, "media")]);
     var ballots = res[0], pr = rankMap(res[1]);
@@ -319,8 +343,9 @@
         '</span><span style="width:40px;text-align:right">' + diff + "</span></div>";
     }).join("");
     var swingText = swing && swing.d !== 0 ? esc(swing.t.abbr) + " " + (swing.d > 0 ? "+" : "−") + Math.abs(swing.d) : "None";
-    var pager = ballots.length > 1 ? '<span style="display:flex;gap:16px"><a href="#ballot-' + esc(prev.id) + '">← ' + esc(prev.name) +
-      '</a><a href="#ballot-' + esc(next.id) + '">' + esc(next.name) + " →</a></span>" : "";
+    var pre = wk ? w.week + "-" : "";
+    var pager = ballots.length > 1 ? '<span style="display:flex;gap:16px"><a href="#ballot-' + pre + esc(prev.id) + '">← ' + esc(prev.name) +
+      '</a><a href="#ballot-' + pre + esc(next.id) + '">' + esc(next.name) + " →</a></span>" : "";
 
     app.innerHTML =
       '<div class="pager"><a href="#ballots">← All ' + weekLabel(w) + " ballots</a>" + pager + "</div>" +
@@ -352,6 +377,29 @@
     var score = g.team_score != null ? g.team_score + "-" + g.opp_score : "";
     if (short) return '<span class="game">' + res + " " + score + " " + where + " " + esc(rk + oppName) + "</span>";
     return '<span class="game">' + res + " " + where + " " + esc(rk + oppName) + " " + score + (g.record ? " · " + esc(g.record) : "") + "</span>";
+  }
+
+  // ---------- Sharing ----------
+  var SITE = "https://cfatop25.com";
+  async function shareOptions(kind, week, ranks, ballotId) {
+    var o = { ranks: ranks, kind: kind, weekLabel: weekLabel(week), records: vote && vote.records ? vote.records : {} };
+    if (kind === "media") {
+      var p = null;
+      try { p = await DB.myMediaProfile(); } catch (e) { p = null; }
+      var u = DB.user(), meta = (u && u.user_metadata) || {};
+      o.name = (p && p.name) || meta.full_name || meta.name || "";
+      o.outlet = (p && p.outlet) || "";
+      o.link = ballotId ? SITE + "/#ballot-" + week.week + "-" + ballotId : SITE + "/#ballots";
+      o.shareText = "My " + o.weekLabel + " CFA Top 25 media ballot is in.";
+    } else {
+      o.link = SITE + "/#vote";
+      o.shareText = "My " + o.weekLabel + " CFA Top 25 Fan Poll ballot is in. Cast yours:";
+    }
+    return o;
+  }
+  async function showShare(el, kind, week, ranks, ballotId) {
+    el.hidden = false;
+    CFAShare.panel(el, await shareOptions(kind, week, ranks, ballotId));
   }
 
   async function renderVote() {
@@ -457,7 +505,10 @@
         : '<div class="page-head"><div><div class="eyebrow"><b>' + weekLabel(w) + " ballot</b> · Open until " + closeAt(w) + "</div>" +
           '<h1>Your Top 25</h1><p class="lede">Pick a slot, then pick a team. Drag teams or use the arrows to reorder.</p></div>') +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + kindTabs + '<button type="button" class="btn btn-ghost" id="clear">Clear ballot</button></div></div>' +
-      '<div id="vote-body"><div class="prefill-note"><span id="vote-note"></span><button type="button" class="btn btn-ghost" id="reset" hidden>Reset to last week</button></div>' +
+      '<div id="vote-body"><div class="prefill-note"><span id="vote-note"></span><span style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<button type="button" class="btn btn-primary" id="share-mine" hidden>Share my ballot</button>' +
+      '<button type="button" class="btn btn-ghost" id="reset" hidden>Reset to last week</button></span></div>' +
+      '<section class="panel share-slot" id="share-slot" hidden></section>' +
       '<div class="vote-grid">' +
       '<section class="ballot-col panel" aria-label="Your ballot"><div class="col-head"><h2 id="ballot-title">Ballot</h2><span class="v-outlet" id="filled"></span></div>' +
       '<ol class="slots" id="slots"></ol></section>' +
@@ -493,6 +544,12 @@
       vote.slots = vote.last.ranks.slice(); vote.active = 0; changed();
     });
     document.getElementById("submit").addEventListener("click", submit);
+    document.getElementById("share-mine").addEventListener("click", function () {
+      var slot = document.getElementById("share-slot");
+      if (!slot.hidden) { slot.hidden = true; return; }
+      showShare(slot, vote.kind, vote.week, vote.submitted.ranks, vote.submitted.id).catch(showError);
+      slot.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
     var ew = document.getElementById("enter-week");
     if (ew) ew.addEventListener("change", function () {
       enterWeekChoice[vote.admin.email] = Number(ew.value);
@@ -507,6 +564,8 @@
   function drawSlots() {
     document.getElementById("vote-note").innerHTML = vote.note;
     document.getElementById("reset").hidden = !vote.last;
+    document.getElementById("share-mine").hidden = !(vote.submitted && !vote.admin);
+    document.getElementById("share-slot").hidden = true;
     document.getElementById("ballot-title").textContent = vote.kind === "media" ? "Media ballot" : "Ballot";
     var html = vote.slots.map(function (id, i) {
       var t = id ? team(id) : null;
@@ -597,8 +656,9 @@
     var btn = document.getElementById("submit");
     btn.disabled = true; btn.textContent = "Saving…";
     try {
+      var savedId = null;
       if (vote.admin) await DB.adminSetMediaBallot(vote.week.week, vote.admin.email, vote.slots.slice());
-      else await DB.submitBallot(vote.week.week, vote.kind, vote.slots.slice());
+      else savedId = await DB.submitBallot(vote.week.week, vote.kind, vote.slots.slice());
     } catch (err) {
       console.error(err);
       var msg = /row-level security/i.test(err.message || "")
@@ -620,13 +680,17 @@
       window.scrollTo(0, 0);
       return;
     }
-    var list = vote.slots.map(function (id, i) { var t = team(id); return "<div><b>" + (i + 1) + "</b>" + logo(t, "sm") + esc(t.name) + "</div>"; }).join("");
+    var released = new Date(vote.week.release_at) <= new Date();
+    var ranksNow = vote.slots.slice(), kindNow = vote.kind, weekNow = vote.week;
     document.getElementById("vote-body").innerHTML =
-      '<section class="panel done"><div class="eyebrow"><b>' + (vote.kind === "media" ? "Media ballot" : "Ballot") + " saved</b></div><h1>You're in for " + weekLabel(vote.week) + "</h1>" +
-      '<p class="lede">You can change it until ' + closeAt(vote.week) + ". Results are live from " + etTime(vote.week.release_at) + " and update until voting closes.</p>" +
+      '<section class="panel done done-compact"><div class="eyebrow"><b>' + (kindNow === "media" ? "Media ballot" : "Ballot") + " saved</b></div><h1>You're in for " + weekLabel(weekNow) + "</h1>" +
+      '<p class="lede">You can change it until ' + closeAt(weekNow) + ". " +
+      (released ? "Results are live now and update as ballots come in." : "Results go live " + etDay(weekNow.release_at) + " at " + etTime(weekNow.release_at) + ".") + "</p>" +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center"><button type="button" class="btn btn-ghost" id="edit">Edit ballot</button>' +
-      '<a class="btn btn-primary" href="#poll">See the current poll</a></div><div class="done-list">' + list + "</div></section>";
+      '<a class="btn btn-ghost" href="#poll">See the current poll</a></div></section>' +
+      '<section class="panel share-slot" id="share-done"></section>';
     document.getElementById("edit").addEventListener("click", function () { renderVote().catch(showError); });
+    showShare(document.getElementById("share-done"), kindNow, weekNow, ranksNow, savedId).catch(showError);
     window.scrollTo(0, 0);
   }
 
@@ -661,9 +725,23 @@
       focus ? DB.notVoted(focus.week) : [],
       focus ? DB.counts(focus.week).then(function (c) { return c.media; }) : 0,
       focus ? DB.counts(focus.week).then(function (c) { return c.fan; }) : 0,
-      DB.lastScoresUpdate()
+      DB.lastScoresUpdate(),
+      DB.mediaRequests("pending")
     ]);
-    var voters = res[0], notVoted = res[1], mediaCount = res[2], fanCount = res[3], scores = res[4];
+    var voters = res[0], notVoted = res[1], mediaCount = res[2], fanCount = res[3], scores = res[4], requests = res[5];
+    var requestCards = requests.map(function (r) {
+      var links = voterLinks(r.outlet, r.outlet_url, r.x_handle);
+      return '<div class="request-card"><div style="min-width:0"><div class="v-name" style="font-size:17px">' + esc(r.name) + "</div>" +
+        '<div class="v-links">' + (links || "No outlet listed") + "</div>" +
+        '<div class="v-outlet">' + esc(r.email) + " · requested " + etDay(r.created_at) + "</div>" +
+        (r.note ? '<p class="request-note">' + esc(r.note) + "</p>" : "") + "</div>" +
+        '<div class="edit-actions"><button type="button" class="btn btn-primary btn-sm" data-approve="' + r.id + '">Approve</button>' +
+        '<button type="button" class="btn btn-ghost btn-sm" data-decline="' + r.id + '">Decline</button></div></div>';
+    }).join("");
+    var requestsSection = requests.length
+      ? '<section class="panel panel-pad requests" style="grid-column:1/-1"><h2>Media access requests <span class="badge badge-inline">' + requests.length + "</span></h2>" +
+        '<p class="panel-note">Approving adds them to the media voter list with their links. They can vote right away.</p>' + requestCards + "</section>"
+      : "";
 
     var status = focus
       ? '<div class="stats"><div class="stat"><div class="eyebrow">Media ballots</div><div class="num">' + mediaCount + " of " + voters.length + "</div></div>" +
@@ -682,7 +760,7 @@
 
     app.innerHTML =
       '<div class="page-head"><div><div class="eyebrow"><b>Admin</b></div><h1>Run the poll</h1></div></div>' +
-      '<div class="admin-grid">' +
+      '<div class="admin-grid">' + requestsSection +
       '<section class="panel panel-pad"><h2>' + (focus ? (open ? weekLabel(focus) + " · voting open" : weekLabel(focus) + " · final") : "This week") + "</h2>" + status + "</section>" +
 
       '<section class="panel panel-pad"><h2>Add media voters</h2>' +
@@ -732,6 +810,20 @@
         route();
       } catch (e) { msg.textContent = e.message || "Couldn't add voters."; }
     });
+    app.querySelectorAll("[data-approve]").forEach(function (b) {
+      b.addEventListener("click", async function () {
+        b.disabled = true; b.textContent = "Approving...";
+        try { await DB.approveMediaRequest(Number(b.dataset.approve)); refreshBadge(); route(); }
+        catch (e) { b.disabled = false; b.textContent = "Couldn't approve"; }
+      });
+    });
+    app.querySelectorAll("[data-decline]").forEach(function (b) {
+      b.addEventListener("click", async function () {
+        if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "Confirm decline"; return; }
+        try { await DB.declineMediaRequest(Number(b.dataset.decline)); refreshBadge(); route(); }
+        catch (e) { b.textContent = "Couldn't decline"; }
+      });
+    });
     app.querySelectorAll("[data-edit-voter]").forEach(function (b) {
       b.addEventListener("click", function () {
         var i = Number(b.dataset.editVoter), v = voters[i];
@@ -780,6 +872,64 @@
     }
   }
 
+  // ---------- Request media access ----------
+  async function renderRequest() {
+    if (!DB.user()) {
+      app.innerHTML = '<section class="panel done"><div class="eyebrow"><b>Media access</b></div><h1>Vote in the Media Poll</h1>' +
+        '<p class="lede">Media members rank their Top 25 each week, and their ballots are published with their name and outlet. ' +
+        "Sign in with the Google account you'd vote with to request access.</p>" +
+        '<button type="button" class="btn btn-primary" id="signin2">Sign in with Google</button></section>';
+      document.getElementById("signin2").addEventListener("click", function () { DB.signIn(); });
+      return;
+    }
+    if (DB.isMedia()) {
+      app.innerHTML = '<section class="panel done"><div class="eyebrow"><b>Media access</b></div><h1>You\'re on the media list</h1>' +
+        '<p class="lede">You can submit a media ballot each week.</p><a class="btn btn-primary" href="#vote">Go to your ballot</a></section>';
+      return;
+    }
+    loading();
+    var u = DB.user(), last = await DB.myMediaRequest();
+    if (last && last.status === "pending") {
+      app.innerHTML = '<section class="panel done"><div class="eyebrow"><b>Media access</b></div><h1>Request received</h1>' +
+        '<p class="lede">You asked on ' + etDay(last.created_at) + ". You'll be able to vote in the Media Poll as soon as it's approved. In the meantime, you can vote in the Fan Poll.</p>" +
+        '<a class="btn btn-primary" href="#vote">Vote in the Fan Poll</a></section>';
+      return;
+    }
+    var name = (u.user_metadata && (u.user_metadata.full_name || u.user_metadata.name)) || "";
+    app.innerHTML =
+      '<div class="page-head"><div><div class="eyebrow"><b>Media access</b></div><h1>Request media access</h1>' +
+      '<p class="lede">Media ballots are public, with your name, outlet and links, like the AP poll. Requests are reviewed by College Football Addiction.</p></div></div>' +
+      (last && last.status === "declined" ? '<div class="prefill-note"><span>Your last request wasn\'t approved. You can send a new one with more detail.</span></div>' : "") +
+      '<form class="panel panel-pad request-form" id="req-form" novalidate>' +
+      '<div class="field"><label for="rq-name">Your name</label><input id="rq-name" required value="' + esc(name) + '"></div>' +
+      '<div class="field"><label for="rq-outlet">Outlet or show</label><input id="rq-outlet" placeholder="Gridiron Weekly"></div>' +
+      '<div class="field"><label for="rq-url">Outlet website</label><input id="rq-url" placeholder="gridironweekly.com"></div>' +
+      '<div class="field"><label for="rq-x">X handle</label><input id="rq-x" placeholder="@yourname"></div>' +
+      '<div class="field" style="grid-column:1/-1"><label for="rq-note">What do you cover? (optional)</label><textarea id="rq-note" rows="3" maxlength="500" placeholder="SEC beat writer for 6 years, weekly podcast..."></textarea></div>' +
+      '<p class="panel-note" style="grid-column:1/-1">You\'ll vote with <b style="color:var(--fg)">' + esc(u.email) + "</b>.</p>" +
+      '<div class="edit-actions" style="grid-column:1/-1"><button type="submit" class="btn btn-primary">Send request</button><span class="form-error" id="rq-msg" role="alert"></span></div>' +
+      "</form>";
+    document.getElementById("req-form").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var m = document.getElementById("rq-msg");
+      var nm = document.getElementById("rq-name").value.trim();
+      var url = normUrl(document.getElementById("rq-url").value), handle = normHandle(document.getElementById("rq-x").value);
+      if (!nm) { m.textContent = "Add your name."; return; }
+      if (url === undefined) { m.textContent = "That website doesn't look right."; return; }
+      if (handle === undefined) { m.textContent = "X handles are letters, numbers and _ (up to 15)."; return; }
+      var btn = e.target.querySelector("button[type=submit]");
+      btn.disabled = true; btn.textContent = "Sending...";
+      try {
+        await DB.submitMediaRequest({ name: nm, outlet: document.getElementById("rq-outlet").value.trim() || null,
+          outlet_url: url, x_handle: handle, note: document.getElementById("rq-note").value.trim() || null });
+        renderRequest().catch(showError);
+      } catch (err) {
+        btn.disabled = false; btn.textContent = "Send request";
+        m.textContent = /one_pending/.test(err.message || "") ? "You already have a request waiting." : (err.message || "Couldn't send the request.");
+      }
+    });
+  }
+
   // ---------- Unsubscribe from reminder emails ----------
   async function renderUnsubscribe(token) {
     loading("Unsubscribing...");
@@ -815,6 +965,7 @@
     else if (h === "admin") p = renderAdmin();
     else if (h.indexOf("enter-") === 0) p = renderEnter(decodeURIComponent(h.slice(6)));
     else if (h.indexOf("unsubscribe-") === 0) p = renderUnsubscribe(h.slice(12));
+    else if (h === "request-media") p = renderRequest();
     else p = renderPoll("media");
     Promise.resolve(p).catch(showError);
     window.scrollTo(0, 0);

@@ -285,3 +285,30 @@ a.ext:hover { text-decoration-color: var(--accent); }
 .edit-voter { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end; padding: 8px 0; }
 .edit-voter .field input { min-width: 0; width: 100%; }
 .edit-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* Media access requests */
+.badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 6px; border-radius: 999px;
+  background: #e5322d; color: #fff; font: 700 12px/1 var(--body); vertical-align: 2px; }
+.badge-inline { vertical-align: 4px; }
+.nav a[data-nav="admin"] { display: inline-flex; align-items: center; }
+.request-card { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); }
+.request-note { margin: 6px 0 0; font-size: 14px; color: #d4d4d8; max-width: 60ch; }
+.request-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; max-width: 760px; }
+.request-form .field input { min-width: 0; width: 100%; }
+
+/* Share panel */
+.share-slot { margin-bottom: 20px; padding: 20px; }
+.done-compact { padding: 24px; margin-bottom: 16px; }
+.share-panel { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+.share-preview { flex: 0 1 300px; min-width: 0; margin: 0 auto; }
+.share-img-wrap { width: 100%; max-width: 300px; aspect-ratio: 9 / 16; border-radius: 12px; overflow: hidden; background: var(--bg); border: 1px solid var(--line); display: grid; place-items: center; margin: 0 auto; }
+.share-img-wrap.square { aspect-ratio: 1 / 1; }
+.share-img-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.share-loading { color: var(--muted); font-size: 14px; padding: 16px; text-align: center; }
+.share-side { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+.share-title { font-size: 32px; }
+.share-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.share-buttons .btn svg { width: 18px; height: 18px; flex: none; }
+.share-tip { margin: 0; color: var(--muted); font-size: 14px; max-width: 60ch; }
+.share-tip b { color: var(--fg); }
+.share-status { color: var(--up); font-size: 14px; min-height: 20px; }

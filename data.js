@@ -151,20 +151,30 @@ window.team = (function () {
       if (!u) return Promise.resolve([]);
       return once("mine:" + u.id, async function () {
         var email = String(u.email || "").toLowerCase();
-        return check(await sb.from("ballots").select("season, week, kind, ranks, updated_at, entered_by_admin")
+        return check(await sb.from("ballots").select("id, season, week, kind, ranks, updated_at, entered_by_admin")
           .or("user_id.eq." + u.id + ",voter_email.eq.\"" + email + "\"")
           .eq("season", CFA.SEASON).order("week", { ascending: false })) || [];
       });
     },
     submitBallot: async function (week, kind, ranks) {
       var u = DB.user();
-      check(await sb.from("ballots").upsert(
+      var saved = check(await sb.from("ballots").upsert(
         { season: CFA.SEASON, week: week, kind: kind, ranks: ranks, user_id: u.id },
         { onConflict: "season,week,user_id,kind" }
-      ));
+      ).select("id"));
       delete cache["mine:" + u.id];
       delete cache["poll:" + week + ":" + kind];
       delete cache["counts:" + week];
+      return saved && saved[0] ? saved[0].id : null;
+    },
+    // A media voter's own name and outlet (for their share graphic)
+    myMediaProfile: function () {
+      var u = DB.user();
+      if (!u) return Promise.resolve(null);
+      return once("profile:" + u.id, async function () {
+        var rows = check(await sb.rpc("my_media_profile")) || [];
+        return rows[0] || null;
+      });
     },
 
     // ---------- Admin ----------
@@ -176,6 +186,31 @@ window.team = (function () {
     },
     updateMediaVoter: async function (email, fields) {
       check(await sb.from("media_voters").update(fields).eq("email", email));
+    },
+    // ---------- Media access requests ----------
+    myMediaRequest: async function () {
+      var u = DB.user();
+      if (!u) return null;
+      var rows = check(await sb.from("media_requests").select("*").eq("user_id", u.id)
+        .order("created_at", { ascending: false }).limit(1)) || [];
+      return rows[0] || null;
+    },
+    submitMediaRequest: async function (f) {
+      check(await sb.from("media_requests").insert(f));
+    },
+    mediaRequests: async function (status) {
+      return check(await sb.from("media_requests").select("*").eq("status", status).order("created_at")) || [];
+    },
+    pendingRequestCount: async function () {
+      var res = await sb.from("media_requests").select("id", { count: "exact", head: true }).eq("status", "pending");
+      if (res.error) throw res.error;
+      return res.count || 0;
+    },
+    approveMediaRequest: async function (id) {
+      check(await sb.rpc("approve_media_request", { p_id: id }));
+    },
+    declineMediaRequest: async function (id) {
+      check(await sb.from("media_requests").update({ status: "declined", decided_at: new Date().toISOString() }).eq("id", id));
     },
     removeMediaVoter: async function (email) {
       check(await sb.from("media_voters").delete().eq("email", email));
