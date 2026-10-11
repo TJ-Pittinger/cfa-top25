@@ -1039,6 +1039,11 @@
       '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">' +
       '<button type="button" class="btn btn-primary" id="rem-send"' + (ready ? "" : " disabled") + ">" + (ready ? "Email the " + ready + " who haven\'t voted" : "No one to email right now") + "</button>" +
       '<button type="button" class="btn btn-ghost" id="rem-test">Send me a test</button></div>' +
+      (st.fans ? '<h3 style="margin:22px 0 6px;font-size:15px">Fans</h3><p class="panel-note"><b style="color:var(--fg)">' + st.fans.total + "</b> fans voted in an earlier week but haven\'t voted this week" +
+        (st.fans.optedOut ? " (" + st.fans.optedOut + " unsubscribed)" : "") + ". Resend\'s free plan sends up to 100 emails a day, media and fans combined" +
+        (st.sentLast24h ? "; " + st.sentLast24h + " already went out in the last 24 hours" : "") + ".</p>" +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px">' +
+        '<button type="button" class="btn btn-ghost" id="rem-fans"' + (st.fans.ready ? "" : " disabled") + ">" + (st.fans.ready ? "Email the " + st.fans.ready + " fans" : "No fans to email right now") + "</button></div>" : "") +
       '<p class="panel-note" id="rem-msg" role="status" style="margin-top:10px;color:var(--fg)">' + esc(flash || "") + "</p>";
     var msg = document.getElementById("rem-msg");
     var send = document.getElementById("rem-send");
@@ -1049,6 +1054,16 @@
         var r = await DB.reminders("send");
         loadReminders("Sent " + r.sent + (r.sent === 1 ? " email." : " emails.") + (r.skippedForLimit ? " " + r.skippedForLimit + " held back by the 100-a-day limit; try again tomorrow." : ""));
       } catch (e) { send.disabled = false; send.dataset.confirm = ""; send.textContent = "Email the " + ready + " who haven\'t voted"; msg.textContent = "Couldn't send: " + e.message; }
+    });
+    var fansBtn = document.getElementById("rem-fans");
+    if (fansBtn) fansBtn.addEventListener("click", async function () {
+      var n = st.fans.ready;
+      if (fansBtn.dataset.confirm !== "1") { fansBtn.dataset.confirm = "1"; fansBtn.textContent = "Yes, email " + n + " fans now"; return; }
+      fansBtn.disabled = true; fansBtn.textContent = "Sending…";
+      try {
+        var r = await DB.reminders("send-fans");
+        loadReminders("Sent " + r.sent + (r.sent === 1 ? " fan email." : " fan emails.") + (r.skippedForLimit ? " " + r.skippedForLimit + " held back by the 100-a-day limit. Click again tomorrow to send the rest." : ""));
+      } catch (e) { fansBtn.disabled = false; fansBtn.dataset.confirm = ""; fansBtn.textContent = "Email the " + n + " fans"; msg.textContent = "Couldn't send: " + e.message; }
     });
     var test = document.getElementById("rem-test");
     test.addEventListener("click", async function () {
