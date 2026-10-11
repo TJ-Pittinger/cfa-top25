@@ -1,0 +1,19 @@
+name: Email media voters a reminder
+
+on:
+  schedule:
+    # Sundays at 8:00 AM Eastern. Two times listed to cover daylight saving;
+    # nobody gets the Sunday email twice, so the second run only catches stragglers.
+    - cron: "0 12 * * 0"
+    - cron: "0 13 * * 0"
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Sunday reminders
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          curl -sS --fail-with-body -X POST "$SUPABASE_URL/functions/v1/reminders" \
+            -H "Content-Type: application/json" -d '{"mode":"cron"}'
