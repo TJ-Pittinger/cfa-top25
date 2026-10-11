@@ -491,8 +491,13 @@
   function loadSlots() {
     var kind = vote.kind, wk = vote.week.week;
     var current = vote.mine.filter(function (b) { return b.week === wk && b.kind === kind; })[0];
-    var last = vote.mine.filter(function (b) { return b.week < wk && b.week > 0 && b.kind === kind; })[0];
+    var earlier = vote.mine.filter(function (b) { return b.week < wk && b.week > 0; });
+    // Prefill from your most recent ballot of this type; if there isn't one, your most recent ballot of the other type.
+    var last = earlier.filter(function (b) { return b.kind === kind; })[0] || (vote.admin ? null : earlier[0]);
     var draft = store(draftKey());
+    // A draft only counts if it has at least one team in it (an emptied ballot shouldn't hide last week's)
+    if (!draft || draft.length !== 25 || !draft.some(Boolean)) draft = null;
+    var known = function (ids) { return ids.map(function (id) { return team(id) ? id : null; }); };
     vote.submitted = current || null;
     vote.last = last || null;
     if (current) {
@@ -500,14 +505,14 @@
       vote.note = vote.admin
         ? "<b>" + esc(vote.admin.name) + " already has a " + weekLabel(vote.week) + " ballot</b> (" + (current.entered_by_admin ? "entered by CFA" : "they voted on the site") + ", " + etDay(current.updated_at) + " at " + etTime(current.updated_at) + "). Saving replaces it."
         : "<b>You submitted this ballot " + etDay(current.updated_at) + " at " + etTime(current.updated_at) + ".</b> You can change it until " + closeAt(vote.week) + ".";
-    } else if (draft && draft.length === 25) {
-      vote.slots = draft;
+    } else if (draft) {
+      vote.slots = known(draft);
       vote.note = "<b>Your draft is saved on this device.</b> It isn't counted until you submit.";
     } else if (last) {
-      vote.slots = last.ranks.slice();
+      vote.slots = known(last.ranks.slice());
       vote.note = vote.admin
         ? "<b>" + esc(vote.admin.name) + "'s Week " + last.week + " ballot is filled in.</b> Adjust it to match what they posted, then save."
-        : "<b>Your Week " + last.week + " ballot is filled in.</b> Each team shows how it did this weekend. Move teams, swap in new ones, then submit.";
+        : "<b>Your Week " + last.week + (last.kind !== kind ? " " + (last.kind === "media" ? "media" : "fan") : "") + " ballot is filled in.</b> Each team shows how it did this weekend. Move teams, swap in new ones, then submit.";
     } else {
       vote.slots = new Array(25).fill(null);
       vote.note = vote.admin
@@ -572,11 +577,17 @@
       });
     });
     document.getElementById("clear").addEventListener("click", function () {
-      vote.slots = new Array(25).fill(null); vote.active = 0; changed();
+      vote.slots = new Array(25).fill(null); vote.active = 0;
+      store(draftKey(), null); drawAll();
     });
     document.getElementById("reset").addEventListener("click", function () {
       if (!vote.last) return;
-      vote.slots = vote.last.ranks.slice(); vote.active = 0; changed();
+      vote.slots = vote.last.ranks.map(function (id) { return team(id) ? id : null; }); vote.active = 0;
+      store(draftKey(), null);
+      vote.note = "<b>Back to your Week " + vote.last.week + " ballot.</b> Make your changes, then submit.";
+      drawAll();
+      var n = document.getElementById("vote-note");
+      n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash");
     });
     document.getElementById("submit").addEventListener("click", submit);
     document.getElementById("share-mine").addEventListener("click", function () {
@@ -598,7 +609,9 @@
 
   function drawSlots() {
     document.getElementById("vote-note").innerHTML = vote.note;
-    document.getElementById("reset").hidden = !vote.last;
+    // Only offer the reset once the ballot differs from last week's
+    document.getElementById("reset").hidden = !vote.last ||
+      vote.last.ranks.join(",") === vote.slots.map(function (x) { return x || ""; }).join(",");
     document.getElementById("share-mine").hidden = !(vote.submitted && !vote.admin);
     document.getElementById("share-slot").hidden = true;
     document.getElementById("ballot-title").textContent = vote.kind === "media" ? "Media ballot" : "Ballot";
@@ -761,7 +774,7 @@
       focus ? DB.counts(focus.week).then(function (c) { return c.media; }) : 0,
       focus ? DB.counts(focus.week).then(function (c) { return c.fan; }) : 0,
       DB.lastScoresUpdate(),
-      DB.mediaRequests("pending")
+      DB.mediaRequests("pending").catch(function () { return []; })
     ]);
     var voters = res[0], notVoted = res[1], mediaCount = res[2], fanCount = res[3], scores = res[4], requests = res[5];
     var requestCards = requests.map(function (r) {
