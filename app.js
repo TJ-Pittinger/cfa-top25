@@ -101,8 +101,8 @@
     }
     var name = (u.user_metadata && (u.user_metadata.full_name || u.user_metadata.name)) || u.email;
     authBox.innerHTML = (DB.isAdmin() ? '<a href="#admin" data-nav="admin">Admin</a>' : "") +
-      '<span class="who" title="' + esc(u.email) + '"><span class="avatar avatar-sm">' + esc(initials(name)) + "</span>" +
-      '<span class="who-name">' + esc(name.split(" ")[0]) + "</span></span>" +
+      '<a class="who" href="#account" title="Your account (' + esc(u.email) + ')"><span class="avatar avatar-sm">' + esc(initials(name)) + "</span>" +
+      '<span class="who-name">' + esc(name.split(" ")[0]) + "</span></a>" +
       '<button type="button" class="btn btn-ghost btn-sm" id="signout">Sign out</button>';
     document.getElementById("signout").addEventListener("click", function () { DB.signOut(); });
     if (DB.isAdmin()) refreshBadge();
@@ -402,6 +402,9 @@
   function gameLine(id, short) {
     var g = vote.games[id];
     if (!g || g.team_score == null) {
+      // Before this weekend's scores are loaded, don't call everyone's week a bye
+      var loaded = Object.keys(vote.games || {}).some(function (k) { return vote.games[k] && vote.games[k].team_score != null; });
+      if (!loaded) return '<span class="game">' + (short ? "" : "Result coming soon") + "</span>";
       return '<span class="game">' + (short ? "Bye" : "Bye week") + "</span>";
     }
     var o = g.opp_id ? team(g.opp_id) : null;
@@ -454,10 +457,19 @@
     var kinds = DB.isMedia() ? ["media", "fan"] : ["fan"];
     vote = {
       week: w, mine: res[0], games: res[1], records: res[2], oppRanks: rankMap(res[3]),
-      kinds: kinds, kind: kinds[0], slots: null, active: 0, q: "", conf: "", note: ""
+      kinds: kinds, kind: kinds[0], slots: null, active: 0, q: "", conf: "", note: "",
+      lastPoll: pollStart(prevW, res[3])
     };
     loadSlots();
     drawVoteShell();
+  }
+
+  // Last week's final CFA Media Poll as a starting ballot, for anyone without a ballot of their own
+  function pollStart(prevW, poll) {
+    if (!poll || !poll.ranked || !poll.ranked.length) return null;
+    var ids = poll.ranked.slice(0, 25).map(function (r) { return r.teamId; });
+    while (ids.length < 25) ids.push(null);
+    return { week: prevW.week, kind: "media", ranks: ids, fromPoll: true };
   }
 
   function draftKey() { return "cfa-draft:" + DB.user().id + ":" + (vote.admin ? vote.admin.email + ":" : "") + CFA.SEASON + ":" + vote.week.week + ":" + vote.kind; }
@@ -493,7 +505,8 @@
     var current = vote.mine.filter(function (b) { return b.week === wk && b.kind === kind; })[0];
     var earlier = vote.mine.filter(function (b) { return b.week < wk && b.week > 0; });
     // Prefill from your most recent ballot of this type; if there isn't one, your most recent ballot of the other type.
-    var last = earlier.filter(function (b) { return b.kind === kind; })[0] || (vote.admin ? null : earlier[0]);
+    var last = earlier.filter(function (b) { return b.kind === kind; })[0] || (vote.admin ? null : earlier[0]) ||
+      (vote.admin ? null : vote.lastPoll) || null;
     var draft = store(draftKey());
     // A draft only counts if it has at least one team in it (an emptied ballot shouldn't hide last week's)
     if (!draft || draft.length !== 25 || !draft.some(Boolean)) draft = null;
@@ -512,6 +525,8 @@
       vote.slots = known(last.ranks.slice());
       vote.note = vote.admin
         ? "<b>" + esc(vote.admin.name) + "'s Week " + last.week + " ballot is filled in.</b> Adjust it to match what they posted, then save."
+        : last.fromPoll
+        ? "<b>Week " + last.week + "'s final CFA Media Poll is filled in to start you off.</b> Each team shows how it did this weekend. Move teams, swap in new ones, then submit."
         : "<b>Your Week " + last.week + (last.kind !== kind ? " " + (last.kind === "media" ? "media" : "fan") : "") + " ballot is filled in.</b> Each team shows how it did this weekend. Move teams, swap in new ones, then submit.";
     } else {
       vote.slots = new Array(25).fill(null);
@@ -584,7 +599,9 @@
       if (!vote.last) return;
       vote.slots = vote.last.ranks.map(function (id) { return team(id) ? id : null; }); vote.active = 0;
       store(draftKey(), null);
-      vote.note = "<b>Back to your Week " + vote.last.week + " ballot.</b> Make your changes, then submit.";
+      vote.note = vote.last.fromPoll
+        ? "<b>Back to the Week " + vote.last.week + " CFA Media Poll.</b> Make your changes, then submit."
+        : "<b>Back to your Week " + vote.last.week + " ballot.</b> Make your changes, then submit.";
       drawAll();
       var n = document.getElementById("vote-note");
       n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash");
@@ -774,9 +791,10 @@
       focus ? DB.counts(focus.week).then(function (c) { return c.media; }) : 0,
       focus ? DB.counts(focus.week).then(function (c) { return c.fan; }) : 0,
       DB.lastScoresUpdate(),
-      DB.mediaRequests("pending").catch(function () { return []; })
+      DB.mediaRequests("pending").catch(function () { return []; }),
+      DB.seasonVoters().catch(function () { return null; })
     ]);
-    var voters = res[0], notVoted = res[1], mediaCount = res[2], fanCount = res[3], scores = res[4], requests = res[5];
+    var voters = res[0], notVoted = res[1], mediaCount = res[2], fanCount = res[3], scores = res[4], requests = res[5], season = res[6];
     var requestCards = requests.map(function (r) {
       var links = voterLinks(r.outlet, r.outlet_url, r.x_handle);
       return '<div class="request-card"><div style="min-width:0"><div class="v-name" style="font-size:17px">' + esc(r.name) + "</div>" +
@@ -793,7 +811,9 @@
 
     var status = focus
       ? '<div class="stats"><div class="stat"><div class="eyebrow">Media ballots</div><div class="num">' + mediaCount + " of " + voters.length + "</div></div>" +
-        '<div class="stat"><div class="eyebrow">Fan ballots</div><div class="num">' + fmt(fanCount) + "</div></div></div>" +
+        '<div class="stat"><div class="eyebrow">Fan ballots</div><div class="num">' + fmt(fanCount) + "</div></div>" +
+        (season ? '<div class="stat"><div class="eyebrow">Fans this season</div><div class="num">' + fmt(season.fans) + "</div></div>" : "") + "</div>" +
+        '<p style="margin:14px 0"><a class="btn btn-ghost" href="#voters">See who voted and review fan ballots</a></p>' +
         (notVoted.length ? '<p class="panel-note"><b style="color:var(--fg)">Haven\'t voted (' + notVoted.length + "):</b> " +
           notVoted.map(function (v) { return esc(v.name); }).join(", ") + "</p>" : '<p class="panel-note">Every media voter has voted.</p>')
       : '<p class="panel-note">No poll week has opened yet.</p>';
@@ -985,8 +1005,205 @@
     try { ok = /^[0-9a-f-]{36}$/i.test(token) && await DB.unsubscribe(token); } catch (e) { ok = false; }
     app.innerHTML = '<section class="panel done"><div class="eyebrow"><b>Reminder emails</b></div>' +
       (ok ? '<h1>You\'re unsubscribed</h1><p class="lede">You won\'t get Sunday reminder emails from the CFA Top 25 anymore. You can still vote any week.</p>'
-          : '<h1>That link didn\'t work</h1><p class="lede">It may be incomplete. Email tj@garnetconnection.com and we\'ll take you off the list.</p>') +
+          : '<h1>That link didn\'t work</h1><p class="lede">It may be incomplete. Try the Unsubscribe link at the bottom of your most recent reminder email.</p>') +
       '<a class="btn btn-primary" href="#poll">See the poll</a></section>';
+  }
+
+  // ---------- Your account: remove Google access, delete account ----------
+  var GOOGLE_CONNECTIONS = "https://myaccount.google.com/connections";
+  function renderAccount() {
+    var u = DB.user();
+    if (!u) {
+      app.innerHTML = '<section class="panel done"><div class="eyebrow"><b>Your account</b></div><h1>Sign in first</h1>' +
+        '<p class="lede">Sign in with the Google account you voted with to delete your account and ballots.</p>' +
+        '<button type="button" class="btn btn-primary" id="signin2">Sign in with Google</button>' +
+        '<p class="panel-note">To remove CFA Top 25\'s access to your Google account without signing in, use Google\'s <a href="' + GOOGLE_CONNECTIONS + '" target="_blank" rel="noopener">Third-party connections</a> page.</p></section>';
+      document.getElementById("signin2").addEventListener("click", function () { DB.signIn(); });
+      return;
+    }
+    var name = (u.user_metadata && (u.user_metadata.full_name || u.user_metadata.name)) || u.email;
+    app.innerHTML =
+      '<div class="page-head"><div><div class="eyebrow"><b>Your account</b></div><h1>' + esc(name) + '</h1><p class="lede">Signed in with ' + esc(u.email) + ".</p></div></div>" +
+      '<div class="admin-grid">' +
+      '<section class="panel panel-pad"><h2>Reminder emails</h2><p class="panel-note">Every CFA Top 25 reminder email has an <b style="color:var(--fg)">Unsubscribe</b> link at the bottom. One click and you won\'t get them anymore.</p></section>' +
+      '<section class="panel panel-pad"><h2>Remove Google access</h2><p class="panel-note">CFA Top 25 only gets your name, email and profile picture from Google. To remove its access, open Google\'s Third-party connections page, pick <b style="color:var(--fg)">CFA Top 25</b>, and choose <b style="color:var(--fg)">Delete all connections</b>.</p>' +
+      '<p style="margin:14px 0 0"><a class="btn btn-ghost" href="' + GOOGLE_CONNECTIONS + '" target="_blank" rel="noopener">Open Google\'s Third-party connections</a></p></section>' +
+      '<section class="panel panel-pad"><h2>Delete my account</h2><p class="panel-note">This deletes your sign-in and your name and email from the site. Your ballot for the week that\'s open now is deleted. Ballots from finished weeks stay in those weeks\' totals so published polls don\'t change, but they\'re no longer linked to you. This can\'t be undone. You can sign in again later and start fresh.</p>' +
+      '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px"><button type="button" class="btn btn-ghost" id="del-acct">Delete my account</button><span class="form-error" id="del-msg" role="alert"></span></div></section>' +
+      "</div>";
+    var btn = document.getElementById("del-acct");
+    btn.addEventListener("click", async function () {
+      if (btn.dataset.confirm !== "1") { btn.dataset.confirm = "1"; btn.textContent = "Yes, delete my account"; btn.classList.add("btn-danger"); return; }
+      btn.disabled = true; btn.textContent = "Deleting...";
+      try {
+        await DB.deleteAccount();
+        location.hash = "#account-deleted";
+        renderAuth(); route();
+      } catch (e) {
+        btn.disabled = false; btn.textContent = "Delete my account"; btn.dataset.confirm = "";
+        document.getElementById("del-msg").textContent = "Couldn't delete your account. Refresh the page and try again.";
+      }
+    });
+  }
+
+  function renderAccountDeleted() {
+    app.innerHTML = '<section class="panel done"><div class="eyebrow"><b>Your account</b></div><h1>Your account is deleted</h1>' +
+      '<p class="lede">You\'re signed out, and your name and email are gone from the CFA Top 25. To also remove its access in your Google account, use Google\'s Third-party connections page.</p>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap"><a class="btn btn-ghost" href="' + GOOGLE_CONNECTIONS + '" target="_blank" rel="noopener">Open Google\'s Third-party connections</a>' +
+      '<a class="btn btn-primary" href="#poll">See the poll</a></div></section>';
+  }
+
+  // ---------- Admin: who voted, and fan ballot review ----------
+  var votersView = { week: null, kind: "fan", q: "", sort: "newest", show: 100, open: {} };
+  async function renderVoters() {
+    if (!DB.user() || !DB.isAdmin()) { app.innerHTML = '<div class="panel panel-pad"><h2>Admins only</h2></div>'; return; }
+    loading();
+    var weeks = DB.weeks().filter(function (w) { return new Date(w.opens_at) <= new Date(); });
+    if (!weeks.length) { app.innerHTML = '<div class="panel panel-pad"><p>No poll week has opened yet. <a href="#admin">Back to admin</a></p></div>'; return; }
+    var def = DB.openWeek() || DB.releasedWeek() || weeks[weeks.length - 1];
+    var w = DB.weekByNumber(votersView.week) || def;
+    votersView.week = w.week;
+    var res = await Promise.all([DB.adminBallots(w.week), DB.seasonVoters().catch(function () { return null; })]);
+    var all = res[0], season = res[1];
+    analyzeBallots(all);
+    var v = votersView;
+
+    function counts() {
+      var c = { fan: 0, fanOut: 0, media: 0 };
+      all.forEach(function (b) { if (b.kind === "media") c.media++; else if (b.excluded) c.fanOut++; else c.fan++; });
+      return c;
+    }
+    function rows() {
+      var list = all.filter(function (b) {
+        if (b.kind !== v.kind) return false;
+        if (v.kind === "fan" && v.sort === "out") return b.excluded;
+        return !v.q || (b.name + " " + b.email).toLowerCase().indexOf(v.q) >= 0;
+      });
+      if (v.sort === "odd") list.sort(function (a, b) { return b.odd - a.odd; });
+      else if (v.sort === "name") list.sort(function (a, b) { return (a.name || a.email).localeCompare(b.name || b.email); });
+      return list;
+    }
+    function flagsHtml(b) {
+      return b.flags.map(function (f) { return '<span class="flag">' + esc(f) + "</span>"; }).join(" ");
+    }
+    function ballotHtml(b) {
+      return '<ol class="vb-grid">' + b.ranks.map(function (id, i) {
+        var t = team(id);
+        var c = b.consensus[id];
+        var far = !c || Math.abs(c - (i + 1)) > 15;
+        return '<li class="' + (far ? "far" : "") + '"><span class="vb-rank num">' + (i + 1) + "</span>" + (t ? logo(t, "sm") : "") +
+          '<span class="vb-name">' + esc(t ? t.name : "Team " + id) + '</span><span class="vb-c num" title="Where this team ranks among everyone\'s ballots">' + (c ? "#" + c : "—") + "</span></li>";
+      }).join("") + "</ol>";
+    }
+    function draw() {
+      var c = counts(), list = rows();
+      document.getElementById("vt-stats").innerHTML =
+        '<div class="stat"><div class="eyebrow">Fan ballots counted</div><div class="num">' + fmt(c.fan) + "</div></div>" +
+        '<div class="stat"><div class="eyebrow">Thrown out</div><div class="num">' + fmt(c.fanOut) + "</div></div>" +
+        '<div class="stat"><div class="eyebrow">Media ballots</div><div class="num">' + fmt(c.media) + "</div></div>" +
+        (season ? '<div class="stat"><div class="eyebrow">Fans this season</div><div class="num">' + fmt(season.fans) + "</div></div>" : "");
+      app.querySelectorAll("[data-vkind]").forEach(function (x) { x.setAttribute("aria-pressed", String(x.dataset.vkind === v.kind)); });
+      document.getElementById("vt-sort").innerHTML =
+        '<option value="newest">Newest first</option>' +
+        (v.kind === "fan" ? '<option value="odd">Most unusual first</option>' : "") +
+        '<option value="name">Name A-Z</option>' +
+        (v.kind === "fan" ? '<option value="out">Thrown out only</option>' : "");
+      if (v.kind !== "fan" && (v.sort === "odd" || v.sort === "out")) v.sort = "newest";
+      document.getElementById("vt-sort").value = v.sort;
+      var shown = list.slice(0, v.show);
+      var body = shown.map(function (b) {
+        var status = b.kind === "media" ? (b.entered ? "Entered by CFA" : "") : b.excluded ? '<span class="flag flag-out">Thrown out</span>' : "";
+        return '<tr class="' + (b.excluded ? "row-out" : "") + '"><td><div class="v-name" style="font-size:15px">' + esc(b.name || "(no name)") + '</div><div class="v-outlet">' + esc(b.email) + "</div></td>" +
+          '<td class="v-outlet" style="white-space:nowrap">' + etDay(b.submitted) + "<br>" + etTime(b.submitted) + "</td>" +
+          "<td>" + status + " " + flagsHtml(b) + "</td>" +
+          '<td class="r" style="white-space:nowrap"><button type="button" class="btn btn-ghost btn-sm" data-view="' + b.id + '">' + (v.open[b.id] ? "Hide" : "View") + "</button> " +
+          (b.kind === "fan" ? '<button type="button" class="btn btn-ghost btn-sm" data-out="' + b.id + '">' + (b.excluded ? "Restore" : "Throw out") + "</button>" : "") + "</td></tr>" +
+          (v.open[b.id] ? '<tr class="vb-row"><td colspan="4">' + ballotHtml(b) + "</td></tr>" : "");
+      }).join("") || '<tr><td colspan="4" class="no-results">' + (v.q ? "No one matches that search." : "No " + v.kind + " ballots for this week yet.") + "</td></tr>";
+      document.getElementById("vt-body").innerHTML = body;
+      document.getElementById("vt-count").textContent = fmt(list.length) + (list.length === 1 ? " ballot" : " ballots");
+      var more = document.getElementById("vt-more");
+      more.hidden = list.length <= v.show;
+      more.textContent = "Show more (" + fmt(list.length - v.show) + " left)";
+      app.querySelectorAll("[data-view]").forEach(function (x) {
+        x.addEventListener("click", function () { var id = x.dataset.view; v.open[id] = !v.open[id]; draw(); });
+      });
+      app.querySelectorAll("[data-out]").forEach(function (x) {
+        x.addEventListener("click", async function () {
+          var b = all.filter(function (y) { return String(y.id) === x.dataset.out; })[0];
+          x.disabled = true;
+          try { await DB.setExcluded(b.id, !b.excluded); b.excluded = !b.excluded; analyzeBallots(all); draw(); }
+          catch (e) { x.disabled = false; x.textContent = "Couldn't save"; }
+        });
+      });
+    }
+
+    app.innerHTML =
+      '<div class="page-head"><div><div class="eyebrow"><b>Admin</b> · <a href="#admin">Back to admin</a></div><h1>Voters</h1>' +
+      '<p class="lede">Everyone who voted, with the Google name and email they signed in with. Throw out a fan ballot that\'s trolling or fake and it stops counting right away. You can restore it.</p></div>' +
+      '<div class="field" style="max-width:220px"><label for="vt-week">Poll week</label><select id="vt-week">' +
+      weeks.slice().reverse().map(function (x) { return '<option value="' + x.week + '"' + (x.week === w.week ? " selected" : "") + ">" + weekLabel(x) + "</option>"; }).join("") +
+      "</select></div></div>" +
+      '<div class="stats" id="vt-stats" style="margin-bottom:16px"></div>' +
+      '<section class="panel"><div class="col-head" style="gap:10px">' +
+      '<span class="tabs" role="group" aria-label="Ballot type"><button type="button" data-vkind="fan">Fan ballots</button><button type="button" data-vkind="media">Media ballots</button></span>' +
+      '<span class="v-outlet" id="vt-count"></span></div>' +
+      '<div class="vt-controls"><label class="visually-hidden" for="vt-q">Search names and emails</label><input class="search" id="vt-q" type="search" placeholder="Search names and emails" value="' + esc(v.q) + '">' +
+      '<label class="visually-hidden" for="vt-sort">Sort</label><select class="search vt-sort" id="vt-sort"></select>' +
+      '<button type="button" class="btn btn-ghost" id="vt-csv">Download names and emails</button></div>' +
+      '<div class="table-scroll"><table class="poll" style="min-width:640px"><thead><tr><th>Voter</th><th>Submitted</th><th>Notes</th><th></th></tr></thead><tbody id="vt-body"></tbody></table></div>' +
+      '<div style="padding:12px 16px"><button type="button" class="btn btn-ghost" id="vt-more" hidden></button></div></section>' +
+      '<p class="panel-note" style="margin-top:12px"><b style="color:var(--fg)">Notes</b> flag ballots worth a look: teams most voters left unranked, a #1 pick far from everyone else\'s, or the exact same ballot from several accounts. In a ballot, numbers on the right are where each team ranks overall, and teams 15+ spots off are highlighted.</p>';
+
+    document.getElementById("vt-week").addEventListener("change", function (e) { v.week = Number(e.target.value); v.open = {}; v.show = 100; renderVoters().catch(showError); });
+    app.querySelectorAll("[data-vkind]").forEach(function (x) { x.addEventListener("click", function () { v.kind = x.dataset.vkind; v.show = 100; draw(); }); });
+    document.getElementById("vt-q").addEventListener("input", function (e) { v.q = e.target.value.trim().toLowerCase(); v.show = 100; draw(); });
+    document.getElementById("vt-sort").addEventListener("change", function (e) { v.sort = e.target.value; v.show = 100; draw(); });
+    document.getElementById("vt-more").addEventListener("click", function () { v.show += 100; draw(); });
+    document.getElementById("vt-csv").addEventListener("click", function () {
+      var q = function (x) { return '"' + String(x == null ? "" : x).replace(/"/g, '""') + '"'; };
+      var lines = [["Name", "Email", "Ballot", "Submitted (ET)", "Status"].map(q).join(",")].concat(all.map(function (b) {
+        return [b.name, b.email, b.kind === "media" ? "Media" : "Fan", etDay(b.submitted) + " " + etTime(b.submitted),
+          b.excluded ? "Thrown out" : b.entered ? "Entered by CFA" : "Counted"].map(q).join(",");
+      }));
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+      a.download = "cfa-top25-" + weekLabel(w).toLowerCase().replace(/\s+/g, "-") + "-voters.csv";
+      document.body.appendChild(a); a.click(); a.remove();
+    });
+    draw();
+  }
+
+  // Compare each ballot with everyone else's of the same type, to surface trolls and fakes.
+  function analyzeBallots(all) {
+    ["fan", "media"].forEach(function (kind) {
+      var list = all.filter(function (b) { return b.kind === kind; });
+      var pts = {};
+      list.forEach(function (b) { if (!b.excluded) b.ranks.forEach(function (id, i) { pts[id] = (pts[id] || 0) + 25 - i; }); });
+      var order = Object.keys(pts).sort(function (a, b) { return pts[b] - pts[a]; });
+      var cons = {};
+      order.forEach(function (id, i) { cons[id] = i + 1; });
+      var same = {};
+      list.forEach(function (b) { var k = b.ranks.join(","); same[k] = (same[k] || 0) + 1; });
+      var enough = list.filter(function (b) { return !b.excluded; }).length >= 5;
+      list.forEach(function (b) {
+        b.consensus = cons;
+        var miss = 0, long = 0;
+        b.ranks.forEach(function (id, i) {
+          var c = cons[id] || 60;
+          miss += Math.min(Math.abs(c - (i + 1)), 40);
+          if (c > 40) long++;
+        });
+        b.odd = miss / 25;
+        b.flags = [];
+        if (!enough) return;
+        if (long >= 3) b.flags.push(long + " teams almost nobody ranked");
+        var top = cons[b.ranks[0]] || 0;
+        if (!top || top > 25) b.flags.push("#1 is " + (team(b.ranks[0]) ? team(b.ranks[0]).name : "?") + " (" + (top ? "#" + top + " overall" : "no one else ranks them") + ")");
+        var dup = same[b.ranks.join(",")] - 1;
+        if (dup >= 2) b.flags.push("Same ballot as " + dup + " others");
+      });
+    });
   }
 
   // ---------- Router ----------
@@ -1000,7 +1217,7 @@
     if (["poll", "fans", "compare", "ballots", ""].indexOf(h) >= 0 && DB.isLive(DB.releasedWeek())) {
       refreshTimer = setTimeout(function () { if ((location.hash || "#poll").slice(1) === h) route(); }, 120000);
     }
-    var navKey = h.indexOf("ballot") === 0 ? "ballots" : h === "vote" ? "vote" : (h === "admin" || h.indexOf("enter-") === 0) ? "admin" : "poll";
+    var navKey = h.indexOf("ballot") === 0 ? "ballots" : h === "vote" ? "vote" : (h === "admin" || h === "voters" || h.indexOf("enter-") === 0) ? "admin" : h.indexOf("account") === 0 ? "" : "poll";
     document.querySelectorAll("[data-nav]").forEach(function (a) {
       if (a.dataset.nav === navKey) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
@@ -1011,6 +1228,9 @@
     else if (h.indexOf("ballot-") === 0) p = renderBallot(h.slice(7));
     else if (h === "vote") p = renderVote();
     else if (h === "admin") p = renderAdmin();
+    else if (h === "voters") p = renderVoters();
+    else if (h === "account") p = renderAccount();
+    else if (h === "account-deleted") p = renderAccountDeleted();
     else if (h.indexOf("enter-") === 0) p = renderEnter(decodeURIComponent(h.slice(6)));
     else if (h.indexOf("unsubscribe-") === 0) p = renderUnsubscribe(h.slice(12));
     else if (h === "request-media") p = renderRequest();

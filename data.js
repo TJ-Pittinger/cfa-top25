@@ -70,6 +70,12 @@ window.team = (function () {
       });
     },
     signOut: function () { return sb.auth.signOut(); },
+    // Deletes the signed-in person's account (see supabase/update_12_delete_account.sql), then signs out here.
+    deleteAccount: async function () {
+      check(await sb.rpc("delete_my_account"));
+      cache = {};
+      try { await sb.auth.signOut({ scope: "local" }); } catch (e) {}
+    },
 
     // ---------- Weeks ----------
     weeks: function () { return state.weeks.filter(visible); },
@@ -223,6 +229,28 @@ window.team = (function () {
     voterBallots: async function (email) {
       return check(await sb.from("ballots").select("season, week, kind, ranks, updated_at, entered_by_admin")
         .eq("voter_email", email).eq("kind", "media").eq("season", CFA.SEASON).order("week", { ascending: false })) || [];
+    },
+    // Admin: every ballot for a week with names and emails (fetched 1,000 at a time)
+    adminBallots: async function (week) {
+      var all = [], from = 0, size = 1000;
+      for (;;) {
+        var rows = check(await sb.rpc("admin_ballots", { p_season: CFA.SEASON, p_week: week }).range(from, from + size - 1)) || [];
+        all = all.concat(rows);
+        if (rows.length < size) break;
+        from += size;
+      }
+      return all.map(function (r) {
+        return { id: r.ballot_id, kind: r.kind, name: r.name || "", email: r.email || "", ranks: r.ranks,
+                 submitted: r.submitted_at, entered: !!r.entered_by_admin, excluded: !!r.excluded };
+      });
+    },
+    seasonVoters: async function () {
+      var rows = check(await sb.rpc("admin_season_voters", { p_season: CFA.SEASON })) || [];
+      return rows[0] ? { fans: Number(rows[0].fans), media: Number(rows[0].media) } : { fans: 0, media: 0 };
+    },
+    setExcluded: async function (ballotId, excluded) {
+      check(await sb.rpc("admin_set_excluded", { p_ballot: ballotId, p_excluded: excluded }));
+      cache = {};
     },
     adminSetMediaBallot: async function (week, email, ranks) {
       check(await sb.rpc("admin_set_media_ballot", { p_season: CFA.SEASON, p_week: week, p_email: email, p_ranks: ranks }));
