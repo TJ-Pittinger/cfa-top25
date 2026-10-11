@@ -221,6 +221,16 @@ window.team = (function () {
     removeMediaVoter: async function (email) {
       check(await sb.from("media_voters").delete().eq("email", email));
     },
+    // Reminder emails (Supabase Edge Function "reminders"): status, test, send
+    reminders: async function (mode, extra) {
+      var res = await sb.functions.invoke("reminders", { body: Object.assign({ mode: mode }, extra || {}) });
+      if (res.error) {
+        var msg = res.error.message || "Couldn't reach the reminder emails.";
+        try { var j = await res.error.context.json(); if (j && j.error) msg = j.error; } catch (e) {}
+        throw new Error(msg);
+      }
+      return res.data;
+    },
     // One-click unsubscribe from reminder emails (token comes from the email link)
     unsubscribe: async function (token) {
       return !!check(await sb.rpc("unsubscribe", { p_token: token }));
