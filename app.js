@@ -831,6 +831,8 @@
       '<div class="admin-grid">' + requestsSection +
       '<section class="panel panel-pad"><h2>' + (focus ? (open ? weekLabel(focus) + " · voting open" : weekLabel(focus) + " · final") : "This week") + "</h2>" + status + "</section>" +
 
+      '<section class="panel panel-pad" id="rem-panel"><h2>Reminder emails</h2><p class="panel-note">Loading…</p></section>' +
+
       '<section class="panel panel-pad"><h2>Add media voters</h2>' +
       '<p class="panel-note">One voter per line: <b style="color:var(--fg)">Name, Outlet, email</b>, then optionally their outlet\'s website and X handle. The email must be the Google account they\'ll sign in with. You can add or change links later with <b style="color:var(--fg)">Edit</b>.</p>' +
       '<label class="visually-hidden" for="bulk">Voters to add</label><textarea id="bulk" rows="6" placeholder="Jane Smith, Gridiron Weekly, jane@gmail.com, gridironweekly.com, @janesmith"></textarea>' +
@@ -850,6 +852,8 @@
       (scores ? "Latest load: " + scores.teams + " teams for Week " + scores.week + "." : "Nothing has loaded yet.") + "</p>" +
       '<a class="btn btn-ghost" href="' + esc(CFA.SCORES_WORKFLOW_URL) + '" target="_blank" rel="noopener">Re-run the score import on GitHub</a></section>' +
       "</div>";
+
+    loadReminders();
 
     document.getElementById("add-voters").addEventListener("click", async function () {
       var msg = document.getElementById("add-msg");
@@ -1007,6 +1011,52 @@
       (ok ? '<h1>You\'re unsubscribed</h1><p class="lede">You won\'t get Sunday reminder emails from the CFA Top 25 anymore. You can still vote any week.</p>'
           : '<h1>That link didn\'t work</h1><p class="lede">It may be incomplete. Try the Unsubscribe link at the bottom of your most recent reminder email.</p>') +
       '<a class="btn btn-primary" href="#poll">See the poll</a></section>';
+  }
+
+  // ---------- Admin: reminder emails ----------
+  async function loadReminders(flash) {
+    var box = document.getElementById("rem-panel");
+    if (!box) return;
+    var head = "<h2>Reminder emails</h2>";
+    var st;
+    try { st = await DB.reminders("status"); }
+    catch (e) {
+      box.innerHTML = head + '<p class="panel-note">Reminder emails aren\'t set up yet (' + esc(e.message) + ").</p>";
+      return;
+    }
+    if (!document.body.contains(box)) return;
+    if (!st.week) { box.innerHTML = head + '<p class="panel-note">' + esc(st.note || "No poll week is open right now.") + "</p>"; return; }
+    var recent = Date.now() - 6 * 3600 * 1000;
+    var out = st.notVoted.filter(function (p) { return p.optedOut; }).length;
+    var skip = st.notVoted.filter(function (p) { return !p.optedOut && p.lastEmailed && new Date(p.lastEmailed).getTime() > recent; }).length;
+    var ready = st.notVoted.length - out - skip;
+    box.innerHTML = head +
+      '<p class="panel-note">Every Sunday at 8 AM ET, media voters who haven\'t voted get an email from <b style="color:var(--fg)">Poll@CFATop25.com</b>. You can also send one now, like a midweek last call.</p>' +
+      '<div class="stats" style="margin:14px 0"><div class="stat"><div class="eyebrow">Haven\'t voted</div><div class="num">' + st.notVoted.length + " of " + st.voters + "</div></div>" +
+      '<div class="stat"><div class="eyebrow">Last email</div><div class="num" style="font-size:18px;line-height:1.6">' + (st.lastSent ? esc(etDay(st.lastSent) + ", " + etTime(st.lastSent)) : "None this week") + "</div></div></div>" +
+      (skip ? '<p class="panel-note">' + skip + " emailed in the last 6 hours will be skipped.</p>" : "") +
+      (out ? '<p class="panel-note">' + out + " unsubscribed and won\'t get emails.</p>" : "") +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">' +
+      '<button type="button" class="btn btn-primary" id="rem-send"' + (ready ? "" : " disabled") + ">" + (ready ? "Email the " + ready + " who haven\'t voted" : "No one to email right now") + "</button>" +
+      '<button type="button" class="btn btn-ghost" id="rem-test">Send me a test</button></div>' +
+      '<p class="panel-note" id="rem-msg" role="status" style="margin-top:10px;color:var(--fg)">' + esc(flash || "") + "</p>";
+    var msg = document.getElementById("rem-msg");
+    var send = document.getElementById("rem-send");
+    send.addEventListener("click", async function () {
+      if (send.dataset.confirm !== "1") { send.dataset.confirm = "1"; send.textContent = "Yes, email " + ready + (ready === 1 ? " person" : " people") + " now"; return; }
+      send.disabled = true; send.textContent = "Sending…";
+      try {
+        var r = await DB.reminders("send");
+        loadReminders("Sent " + r.sent + (r.sent === 1 ? " email." : " emails.") + (r.skippedForLimit ? " " + r.skippedForLimit + " held back by the 100-a-day limit; try again tomorrow." : ""));
+      } catch (e) { send.disabled = false; send.dataset.confirm = ""; send.textContent = "Email the " + ready + " who haven\'t voted"; msg.textContent = "Couldn't send: " + e.message; }
+    });
+    var test = document.getElementById("rem-test");
+    test.addEventListener("click", async function () {
+      test.disabled = true; test.textContent = "Sending…";
+      try { var r = await DB.reminders("test"); msg.textContent = "Test sent to " + r.to + "."; }
+      catch (e) { msg.textContent = "Couldn't send the test: " + e.message; }
+      test.disabled = false; test.textContent = "Send me a test";
+    });
   }
 
   // ---------- Your account: remove Google access, delete account ----------
