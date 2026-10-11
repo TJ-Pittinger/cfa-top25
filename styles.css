@@ -324,3 +324,5 @@ a.ext:hover { text-decoration-color: var(--accent); }
 .tn-wrap .tn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tn-wrap .rec-inline { flex: none; white-space: nowrap; }
 .team-btn .nm.tn-wrap { display: flex; }
+@keyframes noteflash { from { color: var(--accent); } to { color: inherit; } }
+#vote-note.flash b { animation: noteflash 1.6s ease-out; }
