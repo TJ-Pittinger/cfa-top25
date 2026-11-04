@@ -105,14 +105,12 @@
     return ["Jan.", "Feb.", "March", "April", "May", "June", "July", "Aug.", "Sept.", "Oct.", "Nov.", "Dec."][+p[1] - 1] + " " + (+p[2]);
   }
 
-  // Games that matter: a ranked team, or a team in the top four of a title race
+  // Games that matter: at least one team in this week's CFP Top 25 (AP Top 25 before the first CFP ranking)
   function matters(r) {
-    var hot = {};
-    Object.keys(r.races).forEach(function (c) { r.races[c].order.slice(0, 4).forEach(function (t) { hot[t.key] = true; }); });
-    return function (g) {
-      var a = r.teams[g.a], h = r.teams[g.h];
-      return a.baseRank || h.baseRank || hot[g.a] || hot[g.h];
-    };
+    var top = {};
+    if (S.ranking && S.ranking.top25) S.ranking.top25.forEach(function (k) { top[String(k)] = true; });
+    else ((S.data.ap && S.data.ap.rows) || []).forEach(function (row) { if (row[2]) top[row[0]] = true; });
+    return function (g) { return !!(top[g.a] || top[g.h]); };
   }
 
   function weeksHtml(r, T) {
@@ -122,7 +120,7 @@
     var wks = Object.keys(byWk).map(Number).sort(function (a, b) { return a - b; });
     var total = r.games.length, hot = r.games.filter(function (x) { return isHot(x.game); }).length;
     var html = '<div class="cfp-filter tabs" role="group" aria-label="Which games">' +
-      '<button type="button" data-show="top" aria-pressed="' + (S.show === "top") + '">Games that matter (' + hot + ")</button>" +
+      '<button type="button" data-show="top" aria-pressed="' + (S.show === "top") + '">Games with a Top 25 team (' + hot + ")</button>" +
       '<button type="button" data-show="all" aria-pressed="' + (S.show === "all") + '">All games (' + total + ")</button></div>";
     if (!wks.length) html += '<div class="panel panel-pad"><p class="panel-note">The regular season is over. Pick the title games below.</p></div>';
     wks.forEach(function (wk) {
