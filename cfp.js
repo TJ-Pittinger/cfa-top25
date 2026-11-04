@@ -404,7 +404,7 @@
     c.fillStyle = "#a6a6ad"; c.font = "600 24px " + BODY;
     c.fillText("First four out: " + r.out.map(function (t) { return t.name; }).join(", "), 64, 1210);
     c.fillStyle = "#f36c21"; c.font = "800 40px " + DISPLAY;
-    c.fillText("MAKE YOUR OWN AT CFATOP25.COM", 64, 1290);
+    c.fillText("MAKE YOUR OWN AT CFATOP25.COM/CFP", 64, 1290);
     return new Promise(function (res) { cv.toBlob(function (b) { res({ blob: b, url: cv.toDataURL("image/png") }); }, "image/png"); });
   }
   async function openShare() {
@@ -455,7 +455,7 @@
       else if (act === "share") openShare();
       else if (act === "to-bracket") document.getElementById("cfp-bracket").scrollIntoView({ block: "start" });
       else if (act === "close-share") document.getElementById("cfp-share").innerHTML = "";
-      else if (act === "native-share" && S.shareFile) navigator.share({ files: [S.shareFile], text: "My CFP bracket · CFATop25.com" }).catch(function () {});
+      else if (act === "native-share" && S.shareFile) navigator.share({ files: [S.shareFile], text: "My CFP bracket. Build yours: https://cfatop25.com/cfp" }).catch(function () {});
       else if (act === "parse") {
         var lines = (document.getElementById("cfp-paste").value || "").split(/\n+/).map(function (l) { return l.trim(); }).filter(Boolean).slice(0, 25);
         S.entry = { date: nextTuesday(), rows: lines.map(matchTeam) };
