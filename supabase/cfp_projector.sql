@@ -35,6 +35,12 @@ create policy "edit own cfp picks" on public.cfp_picks for update using (user_id
 drop policy if exists "delete own cfp picks" on public.cfp_picks;
 create policy "delete own cfp picks" on public.cfp_picks for delete using (user_id = auth.uid());
 
+-- This project doesn't give new tables to the website's signed-in users automatically. The rules above
+-- still decide which rows each person can see or change.
+grant select, insert, update, delete on public.cfp_picks to authenticated;
+grant select on public.cfp_rankings to anon, authenticated;
+grant insert, update, delete on public.cfp_rankings to authenticated;
+
 -- Pick analytics for admins: one row per game and team with how many people picked that team.
 create or replace function public.cfp_pick_stats(p_season int)
 returns table (game_id text, team_id text, picks bigint, people bigint)
