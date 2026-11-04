@@ -347,3 +347,84 @@ a.ext:hover { text-decoration-color: var(--accent); }
 .vb-c { font-size: 12px; color: var(--faint); }
 a.who:hover { color: var(--fg); text-decoration: none; }
 .btn-danger, .btn-ghost.btn-danger { background: var(--down); border-color: var(--down); color: #111; }
+
+/* ---------- CFP Projector (#cfp) ---------- */
+.cfp { padding-bottom: 72px; }
+.cfp-controls { display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
+.cfp-btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.cfp-saved { font-size: 12px; color: var(--faint); min-width: 40px; }
+.cfp-note { margin: -12px 0 16px; font-size: 13px; color: var(--faint); }
+.cfp-filter { margin-bottom: 16px; }
+.cfp-week { margin-bottom: 28px; }
+.cfp-week-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 10px; border-bottom: 2px solid var(--line); padding-bottom: 8px; }
+.cfp-week-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.cfp-games { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.cfp-game { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+.cfp-game.is-locked { opacity: 0.72; }
+.cfp-game-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--faint); padding: 0 4px 2px; letter-spacing: 0.02em; }
+.cfp-lock { color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
+.cfp-side {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 4px 8px;
+  border-radius: 8px; border: 1px solid transparent; background: var(--surface-2); cursor: pointer; text-align: left;
+}
+.cfp-side:disabled { cursor: default; }
+.cfp-side:not(:disabled):hover { border-color: var(--faint); }
+.cfp-side.is-pick { background: var(--accent); color: var(--accent-ink); }
+.cfp-side.is-pick .cfp-rec, .cfp-side.is-pick .cfp-rank, .cfp-side.is-pick .cfp-at { color: var(--accent-ink); }
+.cfp-side.is-fav { border-color: #4a2a17; }
+.cfp-side.is-loser { background: transparent; color: var(--muted); }
+.cfp-at { width: 12px; font-size: 12px; color: var(--faint); margin-left: -2px; }
+.cfp-rank { font: 700 14px/1 var(--display); color: var(--muted); min-width: 14px; }
+.cfp-name { font-weight: 600; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cfp-rec { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cfp-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8; white-space: nowrap; }
+.cfp-side .tl-sm, .cfp-slot .tl-sm, .cfp-top25 .tl-sm { width: 26px; height: 26px; }
+.cfp-race { border-top: 1px solid var(--line); padding-top: 10px; }
+.cfp-race-head { display: flex; justify-content: space-between; font: 800 18px/1.1 var(--display); text-transform: uppercase; margin-bottom: 4px; }
+.cfp-race-head span { font: 600 12px/1.4 var(--body); text-transform: none; color: var(--accent); }
+.cfp-race-div { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 4px; }
+.cfp-race-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); padding: 1px 0; }
+.cfp-race-row.in { color: var(--fg); font-weight: 700; }
+.cfp-race-why { font-size: 12px; color: var(--faint); margin-top: 4px; }
+.cfp-pod { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.cfp-pod-bye, .cfp-pod-vs { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; }
+.cfp-slot { display: flex; align-items: center; gap: 8px; min-height: 34px; }
+.cfp-seed { font: 800 18px/1 var(--display); color: var(--accent); min-width: 22px; text-align: right; }
+.cfp-top25 { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.cfp-top25 li { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+.cfp-top25 li.in { color: var(--fg); }
+.cfp-top25 .cfp-seed { color: var(--muted); }
+.cfp-top25 li.in .cfp-seed { color: var(--accent); }
+.chg { font-size: 11px; color: var(--faint); min-width: 30px; text-align: right; }
+.chg.up { color: var(--up); } .chg.down { color: var(--down); }
+.cfp-how summary { cursor: pointer; list-style: none; }
+.cfp-how summary::-webkit-details-marker { display: none; }
+.cfp-how summary h2::after { content: " +"; color: var(--faint); }
+.cfp-how[open] summary h2::after { content: " –"; }
+.cfp-how p, .cfp-how li { font-size: 13px; color: var(--muted); margin: 0; }
+.cfp-how ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.cfp-how .faint { color: var(--faint); }
+.cfp-admin { margin-bottom: 20px; border-color: #4a2a17; }
+.cfp-admin textarea, .cfp-admin select, .cfp-admin input { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; }
+.cfp-entry { margin: 0; padding-left: 28px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 16px; }
+.cfp-entry li { font-size: 13px; }
+.cfp-entry-raw { display: block; color: var(--faint); font-size: 11px; }
+.cfp-stats { margin: 0; padding-left: 22px; font-size: 14px; }
+.cfp-stats .num { color: var(--faint); font-size: 12px; }
+.cfp-share { margin-bottom: 20px; align-items: flex-start; }
+.cfp-share img { width: 100%; max-width: 420px; border-radius: 8px; border: 1px solid var(--line); }
+.cfp-strip {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; align-items: center; gap: 10px;
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom, 0px)); background: rgba(11, 11, 12, 0.96); border-top: 2px solid var(--accent);
+}
+.cfp-strip-label { background: none; border: 0; color: var(--fg); cursor: pointer; padding: 6px 4px; font: 800 16px/1 var(--display); text-transform: uppercase; letter-spacing: 0.04em; flex: none; }
+#cfp-bracket { scroll-margin-top: 90px; }
+.cfp-strip-list { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.cfp-chip { flex: none; display: inline-flex; gap: 4px; align-items: center; padding: 4px 8px; border-radius: 6px; background: var(--surface-2); font-size: 12px; font-weight: 700; }
+.cfp-chip b { color: var(--muted); font-weight: 800; }
+.cfp-chip.bye { background: #2a1a10; }
+.cfp-chip.bye b { color: var(--accent); }
+@media (max-width: 640px) {
+  .cfp-controls { align-items: flex-start; width: 100%; }
+  .cfp-games { grid-template-columns: 1fr; }
+}

@@ -100,7 +100,7 @@
       return;
     }
     var name = (u.user_metadata && (u.user_metadata.full_name || u.user_metadata.name)) || u.email;
-    authBox.innerHTML = (DB.isAdmin() ? '<a href="#admin" data-nav="admin">Admin</a>' : "") +
+    authBox.innerHTML = (DB.isAdmin() ? '<a href="#cfp" data-nav="cfp">CFP Projector</a><a href="#admin" data-nav="admin">Admin</a>' : "") +
       '<a class="who" href="#account" title="Your account (' + esc(u.email) + ')"><span class="avatar avatar-sm">' + esc(initials(name)) + "</span>" +
       '<span class="who-name">' + esc(name.split(" ")[0]) + "</span></a>" +
       '<button type="button" class="btn btn-ghost btn-sm" id="signout">Sign out</button>';
@@ -1282,7 +1282,7 @@
     if (["poll", "fans", "compare", "ballots", ""].indexOf(h) >= 0 && DB.isLive(DB.releasedWeek())) {
       refreshTimer = setTimeout(function () { if ((location.hash || "#poll").slice(1) === h) route(); }, 120000);
     }
-    var navKey = h.indexOf("ballot") === 0 ? "ballots" : h === "vote" ? "vote" : (h === "admin" || h === "voters" || h.indexOf("enter-") === 0) ? "admin" : h.indexOf("account") === 0 ? "" : "poll";
+    var navKey = h.indexOf("ballot") === 0 ? "ballots" : h === "vote" ? "vote" : (h === "admin" || h === "voters" || h.indexOf("enter-") === 0) ? "admin" : h === "cfp" ? "cfp" : h.indexOf("account") === 0 ? "" : "poll";
     document.querySelectorAll("[data-nav]").forEach(function (a) {
       if (a.dataset.nav === navKey) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
@@ -1299,6 +1299,7 @@
     else if (h.indexOf("enter-") === 0) p = renderEnter(decodeURIComponent(h.slice(6)));
     else if (h.indexOf("unsubscribe-") === 0) p = renderUnsubscribe(h.slice(12));
     else if (h === "request-media") p = renderRequest();
+    else if (h === "cfp") p = window.CFP.render(app);
     else p = renderPoll("media");
     Promise.resolve(p).catch(showError);
     window.scrollTo(0, 0);
