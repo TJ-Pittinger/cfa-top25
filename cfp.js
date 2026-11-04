@@ -273,7 +273,7 @@
       "<p>Every team starts with the points of its spot in the starting ranking (the committee publishes no points, so the Nth CFP team gets the Nth AP team's points). " +
       "A win over a ranked team adds " + Math.round(s.RANKED_WIN * 100) + "% of that team's points; any other win adds " + s.UNRANKED_WIN + ". " +
       "A loss costs " + s.RANKED_LOSS + " for a ranked team and " + s.UNRANKED_LOSS + " for an unranked one (" + s.CCG_LOSS + " in a title game). " +
-      "Power 4 champions get +" + s.CHAMP_P4 + ", other champions +" + s.CHAMP_OTHER + ", and 11-0 or better gets +" + s.UNBEATEN + ".</p>" +
+      "Power 4 champions get +" + s.CHAMP_P4 + " (SEC and Big Ten champions another +" + s.CHAMP_TOP + "), other champions +" + s.CHAMP_OTHER + ", and 11-0 or better gets +" + s.UNBEATEN + ".</p>" +
       "<p><b>Favorites</b> (games you leave alone): the betting line when ESPN has one, otherwise ESPN's FPI matchup prediction. Title games and flex games use the gap in FPI ratings.</p>" +
       "<p><b>The field (2026 rules):</b> the SEC, Big Ten, Big 12 and ACC champions, plus the highest-ranked Group of 6 team. Notre Dame is in if it's in the top 12. " +
       "The rest go by ranking, and seeds 1–12 go straight by ranking.</p>" +
@@ -401,7 +401,11 @@
       while (c.measureText(name).width > 250 && size > 28) { size -= 2; c.font = "800 " + size + "px " + DISPLAY; }
       while (c.measureText(name).width > 250 && name.length > 3) name = name.slice(0, -1);
       c.fillText(name, x + 178, y + 58);
-      c.fillStyle = "#a6a6ad"; c.font = "500 22px " + BODY; c.fillText(rec(t) + (t.champOf ? " · " + t.champOf + " champ" : ""), x + 180, y + 84);
+      c.fillStyle = "#a6a6ad"; c.font = "500 22px " + BODY;
+      var sub = rec(t) + (t.champOf ? " · " + t.champOf + " champ" : "");
+      if (c.measureText(sub).width > 250) sub = rec(t) + (t.champOf ? " · " + ({ "Mountain West": "MWC", "American": "AAC" }[t.champOf] || t.champOf) + " champ" : "");
+      while (c.measureText(sub).width > 250 && sub.length > 4) sub = sub.slice(0, -1);
+      c.fillText(sub, x + 180, y + 84);
     }
     c.fillStyle = "#a6a6ad"; c.font = "600 24px " + BODY;
     c.fillText("First four out: " + r.out.map(function (t) { return t.name; }).join(", "), 64, 1210);
