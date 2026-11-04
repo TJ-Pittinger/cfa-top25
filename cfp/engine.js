@@ -12,6 +12,7 @@
     UNRANKED_LOSS: 450,   // an unranked team loses (it's already near the bottom)
     CCG_LOSS: 50,         // losing a title game barely hurts (backtest, 2024-25)
     CHAMP_P4: 300,        // won a Power 4 title
+    CHAMP_TOP: 150,       // extra for SEC and Big Ten champions: the committee weighs those leagues' schedules more
     CHAMP_OTHER: 75,      // won any other title
     UNBEATEN: 250         // 11-0 or better
   };
@@ -190,7 +191,7 @@
     });
 
     // ---------- Ranking and field ----------
-    Object.keys(races).forEach(function (c) { var t = races[c].champ; t.pts += P4.indexOf(c) >= 0 ? S.CHAMP_P4 : S.CHAMP_OTHER; t.champOf = c; });
+    Object.keys(races).forEach(function (c) { var t = races[c].champ; t.pts += (P4.indexOf(c) >= 0 ? S.CHAMP_P4 : S.CHAMP_OTHER) + (c === "SEC" || c === "Big Ten" ? S.CHAMP_TOP : 0); t.champOf = c; });
     Object.keys(T).forEach(function (k) { var t = T[k]; if (!t.ph && !t.fcs && t.l === 0 && t.w >= 11) t.pts += S.UNBEATEN; });
     var order = Object.keys(T).map(function (k) { return T[k]; }).filter(function (t) { return !t.ph && !t.fcs && t.w !== null; }).sort(byPts);
     order.forEach(function (t, i) { t.rank = i + 1; });
