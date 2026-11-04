@@ -117,7 +117,23 @@
     }
     (data.results || []).forEach(function (r) { addLog(r[0], r[1]); });
 
-    function fav(a, b) { return T[a].power >= T[b].power ? a : b; }
+    // Who's favored: the betting line when ESPN has one, then ESPN's FPI matchup prediction,
+    // then the gap in FPI ratings (title games, flex games), and last the starting ranking.
+    var FPI = data.fpi || {};
+    function phi(x) { return 1 / (1 + Math.exp(-1.7 * x)); }
+    function favorite(g, neutral) {
+      var a = g.a, h = g.h;
+      var hp = g.hp != null ? g.hp : null;
+      if (hp === null && FPI[a] != null && FPI[h] != null) hp = phi((FPI[h] - FPI[a] + (neutral || g.n ? 0 : 2.5)) / 14);
+      if (g.lf === a || g.lf === h) {
+        return { key: g.lf, src: "line", line: g.line, prob: hp === null ? null : (g.lf === h ? hp : 1 - hp) };
+      }
+      if (hp !== null) {
+        var k = hp >= 0.5 ? h : a;
+        return { key: k, src: g.hp != null ? "fpi" : "fpi-rating", prob: k === h ? hp : 1 - hp };
+      }
+      return { key: T[a].power >= T[h].power ? a : h, src: "rank", prob: null };
+    }
     function apply(win, lose, conf, ccg) {
       var W = T[win], L = T[lose];
       if (W.w !== null) W.w++;
@@ -134,12 +150,12 @@
       .sort(function (x, y) { return Date.parse(x.t) - Date.parse(y.t); });
     var shown = [];
     games.forEach(function (g) {
-      var favorite = fav(g.a, g.h);
+      var fv = favorite(g), favorite_ = fv.key;
       var locked = now >= lockAt(g), hidden = now >= hideAt(g);
       var pick = picks[g.id] === g.a || picks[g.id] === g.h ? picks[g.id] : null;
-      var winner = pick || favorite;
+      var winner = pick || favorite_;
       apply(winner, winner === g.a ? g.h : g.a, g.conf, false);
-      if (!hidden) shown.push({ game: g, favorite: favorite, pick: pick, winner: winner, locked: locked, lockAt: lockAt(g), hideAt: hideAt(g) });
+      if (!hidden) shown.push({ game: g, favorite: favorite_, fav: fv, pick: pick, winner: winner, locked: locked, lockAt: lockAt(g), hideAt: hideAt(g) });
     });
 
     // ---------- Standings ----------
@@ -166,11 +182,11 @@
       races[c] = { conf: c, a: a, b: b, why: why, order: standings[c], divisions: ordered.length === 2 ? ["East", "West"] : null, divOrder: ordered };
       var key = "ccg-" + c;
       var pick = picks[key] === a.key || picks[key] === b.key ? picks[key] : null;
-      var favorite = fav(a.key, b.key);
-      var winner = pick || favorite;
+      var cf = favorite({ a: a.key, h: b.key }, true), favorite_ = cf.key;
+      var winner = pick || favorite_;
       apply(winner, winner === a.key ? b.key : a.key, false, true);
       races[c].champ = T[winner];
-      ccg.push({ id: key, conf: c, a: a.key, h: b.key, favorite: favorite, pick: pick, winner: winner, locked: data.ccgDate ? now >= ccgLock(data.ccgDate) : false });
+      ccg.push({ id: key, conf: c, a: a.key, h: b.key, favorite: favorite_, fav: cf, pick: pick, winner: winner, locked: data.ccgDate ? now >= ccgLock(data.ccgDate) : false });
     });
 
     // ---------- Ranking and field ----------

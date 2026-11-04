@@ -1,7 +1,7 @@
 """
 Build cfp/season.json for the CFP Projector from ESPN: every FBS team's record, every finished
 conference game (for head-to-head and common-opponent tiebreakers), every remaining game with its
-kickoff time, and the latest AP and CFP rankings.
+kickoff time, the betting favorite and ESPN's FPI win chance for each game, and the latest AP and CFP rankings.
 
 Runs on GitHub (see .github/workflows/update-cfp.yml), which commits the file when it changes.
 No keys needed: ESPN's scoreboard is public.
@@ -117,11 +117,103 @@ def parse(events, fbs):
             if conf:
                 results.append([w, l])
         elif status.get("state") != "post" and status.get("name") not in ("STATUS_CANCELED", "STATUS_POSTPONED"):
-            g = {"id": a + "@" + h, "wk": wk, "t": ev.get("date"), "a": a, "h": h, "conf": conf}
+            g = {"id": a + "@" + h, "wk": wk, "t": ev.get("date"), "a": a, "h": h, "conf": conf, "eid": ev.get("id")}
+            if comp.get("neutralSite"):
+                g["n"] = True
+            line = odds_line(comp.get("odds") or [], a, h)
+            if line:
+                g.update(line)
             if comp.get("timeValid") is False or ev.get("timeValid") is False:
                 g["tbd"] = True
             games.append(g)
     return names, records, results, games
+
+
+def odds_line(odds, a, h):
+    """Betting line from ESPN's odds block: {"line": "MIA -7.5", "lf": favorite key}"""
+    for o in odds:
+        details = (o.get("details") or "").strip()
+        if not details or details.upper() in ("EVEN", "OFF"):
+            continue
+        fav = None
+        if (o.get("homeTeamOdds") or {}).get("favorite"):
+            fav = h
+        elif (o.get("awayTeamOdds") or {}).get("favorite"):
+            fav = a
+        else:
+            sp = o.get("spread")
+            if isinstance(sp, (int, float)) and sp != 0:
+                fav = h if sp < 0 else a   # ESPN's spread is from the home team's side
+        if fav:
+            return {"line": details, "lf": fav}
+    return None
+
+
+SUMMARY = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary"
+
+
+def add_predictions(games):
+    """ESPN FPI matchup predictor: home team's chance to win (0-1), saved as "hp"."""
+    got = 0
+    for g in games:
+        if not g.get("eid"):
+            continue
+        try:
+            data = get(SUMMARY + "?event=" + str(g["eid"]))
+        except Exception:
+            continue
+        pr = data.get("predictor") or {}
+        home = pr.get("homeTeam") or {}
+        away = pr.get("awayTeam") or {}
+        hp = home.get("gameProjection")
+        if hp in (None, "") and away.get("gameProjection") not in (None, ""):
+            hp = 100 - float(away["gameProjection"])
+        if hp not in (None, ""):
+            hp = float(hp) / 100.0
+            # ESPN lists teams by id; make sure "home" here is our home team
+            if str(home.get("id") or g["h"]) == g["a"]:
+                hp = 1 - hp
+            g["hp"] = round(hp, 3)
+            got += 1
+        if "line" not in g:
+            line = odds_line(data.get("pickcenter") or [], g["a"], g["h"])
+            if line:
+                g.update(line)
+    print("FPI win chances for %d of %d games, betting lines for %d" % (got, len(games), sum(1 for g in games if g.get("line"))))
+    return games
+
+
+POWER_INDEX = "https://site.web.api.espn.com/apis/fitt/v3/sports/football/college-football/powerindex"
+
+
+def fpi_ratings(fbs):
+    """Each team's FPI rating (points better than an average team). Used for title games and flex games."""
+    out = {}
+    try:
+        data = get(POWER_INDEX + "?" + urllib.parse.urlencode({"region": "us", "lang": "en", "season": SEASON, "limit": 200}))
+    except Exception as e:
+        print("  could not load FPI ratings (%s)" % e)
+        return out
+    names = []
+    for c in data.get("categories") or []:
+        if c.get("name") in ("fpi", "FPI") or "Power" in (c.get("displayName") or ""):
+            names = c.get("names") or c.get("labels") or []
+            break
+    for t in data.get("teams") or []:
+        tid = str((t.get("team") or {}).get("id") or "")
+        if tid not in fbs:
+            continue
+        for c in t.get("categories") or []:
+            vals = c.get("values") or []
+            if c.get("name") in ("fpi", "FPI") and vals:
+                i = names.index("fpi") if "fpi" in names else 0
+                try:
+                    out[tid] = round(float(vals[i]), 1)
+                except (TypeError, ValueError, IndexError):
+                    pass
+                break
+    print("FPI ratings for %d teams" % len(out))
+    return out
 
 
 def add_flex(games, fbs):
@@ -175,8 +267,10 @@ def main():
         print("  week %d: %d games" % (wk, len(evs)))
         events += evs
     names, records, results, games = parse(events, fbs)
+    games = add_predictions(games)
     games = add_flex(games, fbs)
     ap, cfp = rankings(fbs)
+    fpi = fpi_ratings(fbs)
     played = sum(1 for r in records.values() if r[0] + r[1] > 0)
     print("Records for %d teams, %d conference results, %d games left" % (played, len(results), len(games)))
     if played < 100:
@@ -189,7 +283,7 @@ def main():
         "season": SEASON, "source": "espn", "updated": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "names": names, "records": records, "results": results, "games": sorted(games, key=lambda g: (g["t"] or "", g["id"])),
         # Keep the last rankings we had if ESPN doesn't list one this time.
-        "cfp": cfp or old.get("cfp"), "ap": ap or old.get("ap"), "ccgDate": CCG_DATE,
+        "cfp": cfp or old.get("cfp"), "ap": ap or old.get("ap"), "fpi": fpi or old.get("fpi") or {}, "ccgDate": CCG_DATE,
     }
     same = {k: v for k, v in out.items() if k != "updated"} == {k: v for k, v in old.items() if k != "updated"}
     if same:

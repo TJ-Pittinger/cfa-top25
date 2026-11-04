@@ -158,7 +158,17 @@
     var lockLabel = x.locked ? '<span class="cfp-lock">Locked</span>' : '<span>Locks ' + esc(et(x.lockAt, { weekday: "short", hour: "numeric", minute: "2-digit" })) + "</span>";
     return '<div class="cfp-game' + (x.locked ? " is-locked" : "") + '">' +
       '<div class="cfp-game-meta"><span>' + esc(kick(g)) + (g.conf ? "" : " · Non-conf.") + "</span>" + lockLabel + "</div>" +
+      favLine(x, T) +
       side(x, g.a, T) + side(x, g.h, T, true) + "</div>";
+  }
+  // "Favorite: Miami −7.5 · FPI 64%" (line from ESPN's odds; FPI is ESPN's matchup prediction)
+  function favLine(x, T) {
+    var f = x.fav;
+    if (!f || f.src === "rank") return "";
+    var t = T[f.key], bits = [];
+    if (f.src === "line") bits.push(esc(f.line));
+    if (f.prob != null) bits.push((f.src === "fpi-rating" ? "FPI rating " : "FPI ") + Math.round(100 * f.prob) + "%");
+    return '<div class="cfp-fav">Favorite: <b>' + esc(t.name) + "</b> · " + bits.join(" · ") + "</div>";
   }
   function side(x, k, T, home) {
     var t = T[k], won = x.winner === k;
@@ -180,9 +190,9 @@
       '<div class="cfp-games">';
     r.ccg.forEach(function (x) {
       var g = { id: x.id, a: x.a, h: x.h };
-      var row = { game: g, winner: x.winner, pick: x.pick, locked: x.locked };
+      var row = { game: g, winner: x.winner, pick: x.pick, locked: x.locked, fav: x.fav };
       html += '<div class="cfp-game' + (x.locked ? " is-locked" : "") + '"><div class="cfp-game-meta"><span>' + esc(x.conf) + " Championship</span>" +
-        (x.locked ? '<span class="cfp-lock">Locked</span>' : "") + "</div>" + side(row, x.a, T) + side(row, x.h, T) + "</div>";
+        (x.locked ? '<span class="cfp-lock">Locked</span>' : "") + "</div>" + favLine(row, T) + side(row, x.a, T) + side(row, x.h, T) + "</div>";
     });
     return html + "</div></section>";
   }
@@ -242,6 +252,7 @@
       "A win over a ranked team adds " + Math.round(s.RANKED_WIN * 100) + "% of that team's points; any other win adds " + s.UNRANKED_WIN + ". " +
       "A loss costs " + s.RANKED_LOSS + " for a ranked team and " + s.UNRANKED_LOSS + " for an unranked one (" + s.CCG_LOSS + " in a title game). " +
       "Power 4 champions get +" + s.CHAMP_P4 + ", other champions +" + s.CHAMP_OTHER + ", and 11-0 or better gets +" + s.UNBEATEN + ".</p>" +
+      "<p><b>Favorites</b> (games you leave alone): the betting line when ESPN has one, otherwise ESPN's FPI matchup prediction. Title games and flex games use the gap in FPI ratings.</p>" +
       "<p><b>The field (2026 rules):</b> the SEC, Big Ten, Big 12 and ACC champions, plus the highest-ranked Group of 6 team. Notre Dame is in if it's in the top 12. " +
       "The rest go by ranking, and seeds 1–12 go straight by ranking.</p>" +
       "<p><b>Tiebreakers</b> follow each league's published order (two-team ties shown; ties of three or more use the multi-team order). " +

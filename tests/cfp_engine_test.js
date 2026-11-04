@@ -51,3 +51,22 @@ for(let it=0;it<2000;it++){
   r.field.forEach((t,i)=>{if(i)ok(r.field[i-1].pts>=t.pts,'seed order');});
 }
 console.log('pass',pass,'fail',fail);
+// Favorites: betting line, then FPI prediction, then FPI ratings, then ranking
+{
+  const g = data.games.find(g => g.a === idOf('Miami') && g.h === idOf('Notre Dame'));
+  const d2 = JSON.parse(JSON.stringify(data));
+  const gg = d2.games.find(x => x.id === g.id);
+  gg.hp = 0.6; // FPI likes Notre Dame at home
+  let r = E.project({ data: d2, teams: TEAMS, now: Date.parse('2026-11-04T12:00:00Z') });
+  let x = r.games.find(y => y.game.id === g.id);
+  ok(x.favorite === idOf('Notre Dame') && x.fav.src === 'fpi', 'fpi favorite');
+  gg.line = 'MIA -2.5'; gg.lf = idOf('Miami');
+  r = E.project({ data: d2, teams: TEAMS, now: Date.parse('2026-11-04T12:00:00Z') });
+  x = r.games.find(y => y.game.id === g.id);
+  ok(x.favorite === idOf('Miami') && x.fav.src === 'line', 'line beats fpi');
+  delete gg.line; delete gg.lf; delete gg.hp; d2.fpi = {}; d2.fpi[idOf('Miami')] = 5; d2.fpi[idOf('Notre Dame')] = 20;
+  r = E.project({ data: d2, teams: TEAMS, now: Date.parse('2026-11-04T12:00:00Z') });
+  x = r.games.find(y => y.game.id === g.id);
+  ok(x.favorite === idOf('Notre Dame') && x.fav.src === 'fpi-rating', 'fpi rating favorite');
+  console.log('favorite checks', pass, fail);
+}
