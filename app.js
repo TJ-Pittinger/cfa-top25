@@ -792,8 +792,10 @@
       focus ? DB.counts(focus.week).then(function (c) { return c.fan; }) : 0,
       DB.lastScoresUpdate(),
       DB.mediaRequests("pending").catch(function () { return []; }),
-      DB.seasonVoters().catch(function () { return null; })
+      DB.seasonVoters().catch(function () { return null; }),
+      DB.cfpPickCount().catch(function () { return null; })
     ]);
+    var cfpCount = res[7];
     var voters = res[0], notVoted = res[1], mediaCount = res[2], fanCount = res[3], scores = res[4], requests = res[5], season = res[6];
     var requestCards = requests.map(function (r) {
       var links = voterLinks(r.outlet, r.outlet_url, r.x_handle);
@@ -829,6 +831,9 @@
     app.innerHTML =
       '<div class="page-head"><div><div class="eyebrow"><b>Admin</b></div><h1>Run the poll</h1></div>' +
       '<a class="btn btn-ghost" href="#cfp-admin">CFP Projector: enter rankings and see pick analytics</a></div>' +
+      (cfpCount ? '<section class="panel panel-pad" style="margin-bottom:20px"><h2>CFP Projector</h2><div class="stats">' +
+        '<div class="stat"><div class="eyebrow">Fans with saved picks</div><div class="num">' + fmt(cfpCount.total) + "</div></div>" +
+        '<div class="stat"><div class="eyebrow">Picked in the last 24 hours</div><div class="num">' + fmt(cfpCount.day) + "</div></div></div></section>" : "") +
       '<div class="admin-grid">' + requestsSection +
       '<section class="panel panel-pad"><h2>' + (focus ? (open ? weekLabel(focus) + " · voting open" : weekLabel(focus) + " · final") : "This week") + "</h2>" + status + "</section>" +
 
