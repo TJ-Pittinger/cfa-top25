@@ -293,6 +293,37 @@ window.team = (function () {
       var res = await sb.from("games").select("team_id", { count: "exact", head: true }).eq("season", CFA.SEASON).eq("week", wk);
       if (res.error) throw res.error;
       return { week: wk, teams: res.count || 0 };
+    },
+
+    // ---------- CFP Projector (supabase/cfp_projector.sql) ----------
+    // Each of these returns null instead of failing if that SQL hasn't been run yet.
+    // The committee's latest Top 25 as entered by an admin: { released: "2026-11-10", ranks: [team ids] }
+    cfpRanking: async function () {
+      var res = await sb.from("cfp_rankings").select("released, ranks").eq("season", CFA.SEASON).order("released", { ascending: false }).limit(1);
+      if (res.error) return null;
+      return res.data && res.data[0] ? res.data[0] : null;
+    },
+    saveCfpRanking: async function (released, ranks) {
+      check(await sb.from("cfp_rankings").upsert({ season: CFA.SEASON, released: released, ranks: ranks }, { onConflict: "season,released" }));
+    },
+    myCfpPicks: async function () {
+      var u = DB.user();
+      if (!u) return null;
+      var res = await sb.from("cfp_picks").select("picks").eq("season", CFA.SEASON).eq("user_id", u.id).maybeSingle();
+      if (res.error) return null;
+      return res.data ? res.data.picks : null;
+    },
+    saveCfpPicks: async function (picks) {
+      var u = DB.user();
+      if (!u) return false;
+      var res = await sb.from("cfp_picks").upsert({ user_id: u.id, season: CFA.SEASON, picks: picks, updated_at: new Date().toISOString() }, { onConflict: "user_id,season" });
+      return !res.error;
+    },
+    // Admins only: how many people picked each side of each game
+    cfpPickStats: async function () {
+      var res = await sb.rpc("cfp_pick_stats", { p_season: CFA.SEASON });
+      if (res.error) return null;
+      return res.data || [];
     }
   };
 })();

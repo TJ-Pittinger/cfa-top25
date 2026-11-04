@@ -1,0 +1,44 @@
+name: Update CFP Projector schedule from ESPN
+
+on:
+  schedule:
+    # Sundays right after Saturday's games: 12:30, 1:30 and 3:30 AM Eastern (both daylight and standard time).
+    - cron: "30 4 * * 0"
+    - cron: "30 5 * * 0"
+    - cron: "30 6 * * 0"
+    - cron: "30 8 * * 0"
+    # Every day at 6 AM Eastern, for new kickoff times and weeknight games.
+    - cron: "0 11 * * *"
+    # Tuesday night after the CFP rankings show (about 9:30 PM Eastern).
+    - cron: "45 2 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-cfp
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build cfp/season.json
+        run: python tools/update_cfp.py
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- cfp/season.json; then
+            echo "No changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cfp/season.json
+          git commit -m "Update CFP Projector schedule from ESPN"
+          git pull --rebase
+          git push
