@@ -56,9 +56,11 @@
   }
 
   // ---------- Rendering ----------
-  async function render(app) {
-    if (!DB.user() || !DB.isAdmin()) {
-      app.innerHTML = '<div class="panel panel-pad"><h2>Coming soon</h2><p class="panel-note">The CFP Projector is being tested. Check back soon.</p></div>';
+  // mode "admin": the admin-only tools page (#cfp-admin). Otherwise the public projector (#cfp).
+  async function render(app, mode) {
+    S.mode = mode === "admin" ? "admin" : "public";
+    if (S.mode === "admin" && (!DB.user() || !DB.isAdmin())) {
+      app.innerHTML = '<div class="panel panel-pad"><h2>Admins only</h2><p class="panel-note">This page is for site admins.</p></div>';
       return;
     }
     app.innerHTML = '<div class="loading">Loading the projector…</div>';
@@ -70,13 +72,18 @@
   function draw(app) {
     var r = run(), T = r.teams;
     var y = window.scrollY;
-    app.innerHTML =
-      '<div class="cfp">' +
-      head(r) +
-      '<div class="layout">' +
-      '<div class="main-col">' + weeksHtml(r, T) + ccgHtml(r, T) + adminHtml(r, T) + '</div>' +
-      '<aside class="side-col">' + bracketHtml(r) + racesHtml(r) + top25Html(r) + howHtml() + "</aside>" +
-      "</div>" + stripHtml(r) + "</div>";
+    if (S.mode === "admin") {
+      app.innerHTML = '<div class="cfp"><div class="page-head"><div><div class="eyebrow"><b>Admin</b> · <a href="#admin">Back to admin</a> · <a href="#cfp">Open the projector</a></div>' +
+        "<h1>CFP Projector tools</h1></div></div>" + adminHtml(r, T) + "</div>";
+    } else {
+      app.innerHTML =
+        '<div class="cfp">' +
+        head(r) +
+        '<div class="layout">' +
+        '<div class="main-col">' + weeksHtml(r, T) + ccgHtml(r, T) + "</div>" +
+        '<aside class="side-col">' + bracketHtml(r) + racesHtml(r) + top25Html(r) + howHtml() + "</aside>" +
+        "</div>" + stripHtml(r) + "</div>";
+    }
     window.scrollTo(0, y);
   }
 
@@ -84,7 +91,7 @@
     var cfpLabel = S.ranking ? "CFP · " + shortDate(S.ranking.date) : "CFP (not out yet)";
     var apLabel = "AP · " + shortDate(S.data.ap && S.data.ap.date);
     var n = Object.keys(S.picks).length;
-    return '<div class="page-head"><div><div class="eyebrow"><b>Admin preview</b> · Only admins can see this page</div>' +
+    return '<div class="page-head"><div><div class="eyebrow"><b>CFA Top 25</b> · Playoff projector</div>' +
       "<h1>CFP Projector</h1>" +
       '<p class="lede">Pick the rest of the season. Standings, title games and the 12-team bracket update with every pick. ' +
       "Games you leave alone go to the favorite.</p></div>" +
@@ -93,7 +100,8 @@
       '<button type="button" data-base="ap" aria-pressed="' + (S.baseline === "ap") + '">' + esc(apLabel) + "</button></div>" +
       '<div class="cfp-btns"><button type="button" class="btn btn-primary btn-sm" data-act="share">Share my bracket</button>' +
       '<button type="button" class="btn btn-ghost btn-sm" data-act="reset"' + (n ? "" : " disabled") + ">Reset all</button>" +
-      '<span class="cfp-saved" id="cfp-saved" aria-live="polite">' + esc(S.saved) + "</span></div></div></div>" +
+      (DB.user() ? '<span class="cfp-saved" id="cfp-saved" aria-live="polite">' + esc(S.saved) + "</span>" :
+        '<button type="button" class="btn btn-ghost btn-sm" data-act="signin">Sign in to save picks</button>') + "</div></div></div>" +
       '<div id="cfp-share"></div>' +
       (S.data.source === "seed" ? '<p class="cfp-note">Schedule and results are the hand-checked set through ' + shortDate(S.data.through) +
         '. Kickoff times appear once the ESPN feed runs.</p>' : '<p class="cfp-note">Schedule and results from ESPN, updated ' +
@@ -281,7 +289,7 @@
   function adminHtml(r, T) {
     var html = '<section class="panel panel-pad cfp-admin"><h2>Enter the CFP Top 25</h2>' +
       '<p class="panel-note">Paste the committee\'s rankings, one team per line (numbers and records are fine: "1. Miami (9-0)"). ' +
-      "Check the matches, then save. Everyone's projector starts from the newest ranking." +
+      "Check the matches, then save. Everyone's projector starts from the newest ranking the next time they open it." +
       (S.ranking ? " Current: " + esc(shortDate(S.ranking.date)) + "." : "") + "</p>";
     if (!S.entry) {
       html += '<textarea id="cfp-paste" rows="6" placeholder="1. Miami&#10;2. Georgia&#10;3. Utah&#10;…"></textarea>' +
@@ -443,7 +451,8 @@
         // Locked picks stay; everything else clears.
         run().games.forEach(function (x) { if (x.locked && S.picks[x.game.id]) keep[x.game.id] = S.picks[x.game.id]; });
         S.picks = keep; persist(); draw(app);
-      } else if (act === "share") openShare();
+      } else if (act === "signin") DB.signIn();
+      else if (act === "share") openShare();
       else if (act === "to-bracket") document.getElementById("cfp-bracket").scrollIntoView({ block: "start" });
       else if (act === "close-share") document.getElementById("cfp-share").innerHTML = "";
       else if (act === "native-share" && S.shareFile) navigator.share({ files: [S.shareFile], text: "My CFP bracket · CFATop25.com" }).catch(function () {});
