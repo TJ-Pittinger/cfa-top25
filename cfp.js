@@ -63,6 +63,14 @@
       app.innerHTML = '<div class="panel panel-pad"><h2>Admins only</h2><p class="panel-note">This page is for site admins.</p></div>';
       return;
     }
+    if (!DB.user()) {
+      app.innerHTML = '<section class="panel done"><div class="eyebrow"><b>Sign in to play</b></div><h1>CFP Projector</h1>' +
+        '<p class="lede">Pick every remaining game and see the conference title games, the projected Top 25 and the 12-team bracket your picks produce.</p>' +
+        '<button type="button" class="btn btn-primary" id="cfp-signin">Sign in with Google</button>' +
+        '<p class="panel-note">Free. Your picks save to your account, so they follow you to any device.</p></section>';
+      document.getElementById("cfp-signin").addEventListener("click", function () { DB.signIn(); });
+      return;
+    }
     app.innerHTML = '<div class="loading">Loading the projector…</div>';
     await load();
     draw(app);
@@ -100,8 +108,7 @@
       '<button type="button" data-base="ap" aria-pressed="' + (S.baseline === "ap") + '">' + esc(apLabel) + "</button></div>" +
       '<div class="cfp-btns"><button type="button" class="btn btn-primary btn-sm" data-act="share">Share my bracket</button>' +
       '<button type="button" class="btn btn-ghost btn-sm" data-act="reset"' + (n ? "" : " disabled") + ">Reset all</button>" +
-      (DB.user() ? '<span class="cfp-saved" id="cfp-saved" aria-live="polite">' + esc(S.saved) + "</span>" :
-        '<button type="button" class="btn btn-ghost btn-sm" data-act="signin">Sign in to save picks</button>') + "</div></div></div>" +
+      '<span class="cfp-saved" id="cfp-saved" aria-live="polite">' + esc(S.saved) + "</span></div></div></div>" +
       '<div id="cfp-share"></div>' +
       (S.data.source === "seed" ? '<p class="cfp-note">Schedule and results are the hand-checked set through ' + shortDate(S.data.through) +
         '. Kickoff times appear once the ESPN feed runs.</p>' : '<p class="cfp-note">Schedule and results from ESPN, updated ' +
