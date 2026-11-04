@@ -100,7 +100,7 @@
       return;
     }
     var name = (u.user_metadata && (u.user_metadata.full_name || u.user_metadata.name)) || u.email;
-    authBox.innerHTML = (DB.isAdmin() ? '<a href="#cfp" data-nav="cfp">CFP Projector</a><a href="#admin" data-nav="admin">Admin</a>' : "") +
+    authBox.innerHTML = (DB.isAdmin() ? '<a href="#admin" data-nav="admin">Admin</a>' : "") +
       '<a class="who" href="#account" title="Your account (' + esc(u.email) + ')"><span class="avatar avatar-sm">' + esc(initials(name)) + "</span>" +
       '<span class="who-name">' + esc(name.split(" ")[0]) + "</span></a>" +
       '<button type="button" class="btn btn-ghost btn-sm" id="signout">Sign out</button>';
@@ -827,7 +827,8 @@
     }).join("") || '<tr><td colspan="5" class="no-results">No media voters yet. Add them above.</td></tr>';
 
     app.innerHTML =
-      '<div class="page-head"><div><div class="eyebrow"><b>Admin</b></div><h1>Run the poll</h1></div></div>' +
+      '<div class="page-head"><div><div class="eyebrow"><b>Admin</b></div><h1>Run the poll</h1></div>' +
+      '<a class="btn btn-ghost" href="#cfp-admin">CFP Projector: enter rankings and see pick analytics</a></div>' +
       '<div class="admin-grid">' + requestsSection +
       '<section class="panel panel-pad"><h2>' + (focus ? (open ? weekLabel(focus) + " · voting open" : weekLabel(focus) + " · final") : "This week") + "</h2>" + status + "</section>" +
 
@@ -1282,7 +1283,7 @@
     if (["poll", "fans", "compare", "ballots", ""].indexOf(h) >= 0 && DB.isLive(DB.releasedWeek())) {
       refreshTimer = setTimeout(function () { if ((location.hash || "#poll").slice(1) === h) route(); }, 120000);
     }
-    var navKey = h.indexOf("ballot") === 0 ? "ballots" : h === "vote" ? "vote" : (h === "admin" || h === "voters" || h.indexOf("enter-") === 0) ? "admin" : h === "cfp" ? "cfp" : h.indexOf("account") === 0 ? "" : "poll";
+    var navKey = h.indexOf("ballot") === 0 ? "ballots" : h === "vote" ? "vote" : (h === "admin" || h === "voters" || h === "cfp-admin" || h.indexOf("enter-") === 0) ? "admin" : h === "cfp" ? "cfp" : h.indexOf("account") === 0 ? "" : "poll";
     document.querySelectorAll("[data-nav]").forEach(function (a) {
       if (a.dataset.nav === navKey) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
@@ -1300,6 +1301,7 @@
     else if (h.indexOf("unsubscribe-") === 0) p = renderUnsubscribe(h.slice(12));
     else if (h === "request-media") p = renderRequest();
     else if (h === "cfp") p = window.CFP.render(app);
+    else if (h === "cfp-admin") p = window.CFP.render(app, "admin");
     else p = renderPoll("media");
     Promise.resolve(p).catch(showError);
     window.scrollTo(0, 0);
