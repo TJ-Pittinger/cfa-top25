@@ -4,7 +4,7 @@
 (function () {
   var E = window.CFPEngine;
   var KEY = "cfa-cfp-picks-" + CFA.SEASON;
-  var S = { data: null, ranking: null, picks: null, baseline: "cfp", show: "top", saveTimer: null, saved: "", stats: null, entry: null };
+  var S = { data: null, ranking: null, picks: null, baseline: "cfp", show: "top", saveTimer: null, saved: "", stats: null, entry: null, open: null };
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -132,12 +132,25 @@
       var allLocked = byWk[wk].every(function (x) { return x.locked; });
       var lockNote = allLocked ? "Picks locked · results replace them after Saturday" :
         "Picks lock at noon ET Saturday, or at kickoff for games on other days";
-      html += '<section class="cfp-week" aria-label="Week ' + wk + '"><div class="cfp-week-head"><div><h2>Week ' + wk + "</h2>" +
-        '<div class="cfp-week-sub">' + esc(dateRange(first, last)) + " · " + esc(lockNote) + "</div></div>" +
-        (picked && !allLocked ? '<button type="button" class="btn btn-ghost btn-sm" data-reset-week="' + wk + '">Reset week</button>' : "") + "</div>" +
-        '<div class="cfp-games">' + list.map(function (x) { return gameHtml(x, T); }).join("") + "</div></section>";
+      var key = "w" + wk;
+      if (S.open === null) S.open = key; // first remaining week starts open
+      var nPicked = list.filter(function (x) { return x.pick; }).length;
+      var summary = list.length + " games" + (nPicked ? " · " + nPicked + " picked" : "") + (allLocked ? " · Locked" : "");
+      html += weekShell(key, "Week " + wk, esc(dateRange(first, last)) + " · " + esc(summary),
+        '<p class="cfp-week-note">' + esc(lockNote) + "</p>" +
+        (picked && !allLocked ? '<div class="cfp-week-tools"><button type="button" class="btn btn-ghost btn-sm" data-reset-week="' + wk + '">Reset week</button></div>' : "") +
+        '<div class="cfp-games">' + list.map(function (x) { return gameHtml(x, T); }).join("") + "</div>");
     });
     return html;
+  }
+  // One week open at a time: tap a week's header to open it (and close the others).
+  function weekShell(key, title, sub, body) {
+    var open = S.open === key;
+    return '<section class="cfp-week' + (open ? " is-open" : "") + '" id="cfp-' + key + '">' +
+      '<button type="button" class="cfp-week-head" data-week="' + key + '" aria-expanded="' + open + '" aria-controls="cfp-body-' + key + '">' +
+      "<span><span class=\"cfp-week-title\">" + title + '</span><span class="cfp-week-sub">' + sub + "</span></span>" +
+      '<span class="cfp-chev" aria-hidden="true">' + (open ? "−" : "+") + "</span></button>" +
+      (open ? '<div class="cfp-week-body" id="cfp-body-' + key + '">' + body + "</div>" : "") + "</section>";
   }
   function importance(x, T) {
     var a = T[x.game.a].baseRank, h = T[x.game.h].baseRank;
@@ -183,16 +196,17 @@
 
   function ccgHtml(r, T) {
     if (!r.ccg.length) return "";
-    var html = '<section class="cfp-week"><div class="cfp-week-head"><div><h2>Championship week</h2>' +
-      '<div class="cfp-week-sub">' + esc(shortDate(S.data.ccgDate)) + " · Matchups come from the standings your picks produce</div></div></div>" +
-      '<div class="cfp-games">';
+    if (S.open === null) S.open = "ccg";
+    var body = '<p class="cfp-week-note">Matchups come from the standings your picks produce.</p><div class="cfp-games">';
     r.ccg.forEach(function (x) {
       var g = { id: x.id, a: x.a, h: x.h };
       var row = { game: g, winner: x.winner, pick: x.pick, locked: x.locked, fav: x.fav };
-      html += '<div class="cfp-game' + (x.locked ? " is-locked" : "") + '"><div class="cfp-game-meta"><span>' + esc(x.conf) + " Championship</span>" +
+      body += '<div class="cfp-game' + (x.locked ? " is-locked" : "") + '"><div class="cfp-game-meta"><span>' + esc(x.conf) + " Championship</span>" +
         (x.locked ? '<span class="cfp-lock">Locked</span>' : "") + "</div>" + favLine(row, T) + side(row, x.a, T) + side(row, x.h, T) + "</div>";
     });
-    return html + "</div></section>";
+    body += "</div>";
+    var nPicked = r.ccg.filter(function (x) { return x.pick; }).length;
+    return weekShell("ccg", "Championship week", esc(shortDate(S.data.ccgDate)) + " · " + r.ccg.length + " title games" + (nPicked ? " · " + nPicked + " picked" : ""), body);
   }
 
   function racesHtml(r) {
@@ -410,6 +424,13 @@
       }
       if (b.dataset.base) { S.baseline = b.dataset.base; try { localStorage.setItem(KEY + "-base", S.baseline); } catch (x) {} draw(app); return; }
       if (b.dataset.show) { S.show = b.dataset.show; draw(app); return; }
+      if (b.dataset.week) {
+        S.open = S.open === b.dataset.week ? "" : b.dataset.week;
+        draw(app);
+        var sec = document.getElementById("cfp-" + b.dataset.week);
+        if (S.open && sec && sec.getBoundingClientRect().top < 70) sec.scrollIntoView({ block: "start" });
+        return;
+      }
       if (b.dataset.resetWeek) {
         var wk = Number(b.dataset.resetWeek), now = Date.now();
         S.data.games.forEach(function (g) { if (g.wk === wk && now < E.lockAt(g)) delete S.picks[g.id]; });
