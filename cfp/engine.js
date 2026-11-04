@@ -128,7 +128,9 @@
       W.last = "W"; L.last = "L";
     }
 
-    var games = (data.games || []).filter(function (g) { return T[g.a] && T[g.h]; })
+    // Games after title-game weekend (Army-Navy) don't affect standings or selection.
+    var cutoff = data.ccgDate ? Date.parse(data.ccgDate + "T23:59:59Z") + 86400000 : Infinity;
+    var games = (data.games || []).filter(function (g) { return T[g.a] && T[g.h] && Date.parse(g.t) < cutoff; })
       .sort(function (x, y) { return Date.parse(x.t) - Date.parse(y.t); });
     var shown = [];
     games.forEach(function (g) {

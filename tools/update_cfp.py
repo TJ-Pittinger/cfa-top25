@@ -70,6 +70,8 @@ def parse(events, fbs):
     for ev in events:
         if ev.get("id") in seen or is_title_game(ev):
             continue
+        if (ev.get("date") or "")[:10] > CCG_DATE:
+            continue  # after title-game weekend (Army-Navy): doesn't affect standings or selection
         seen.add(ev.get("id"))
         comp = (ev.get("competitions") or [{}])[0]
         cs = comp.get("competitors") or []
