@@ -39,6 +39,8 @@
     var local = {};
     try { local = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) {}
     S.picks = res[2] || local || {};
+    // A pick tapped just before signing in waits in the browser; save it to the account now.
+    if (DB.user() && !res[2] && Object.keys(S.picks).length) persist();
     try { S.baseline = localStorage.getItem(KEY + "-base") || "cfp"; } catch (e) {}
     if (!S.ranking) S.baseline = "ap";
   }
@@ -101,7 +103,7 @@
       '<div class="cfp-btns"><button type="button" class="btn btn-primary btn-sm" data-act="share">Share my bracket</button>' +
       '<button type="button" class="btn btn-ghost btn-sm" data-act="reset"' + (n ? "" : " disabled") + ">Reset all</button>" +
       (DB.user() ? '<span class="cfp-saved" id="cfp-saved" aria-live="polite">' + esc(S.saved) + "</span>" :
-        '<button type="button" class="btn btn-ghost btn-sm" data-act="signin">Sign in to save picks</button>') + "</div></div></div>" +
+        '<button type="button" class="btn btn-ghost btn-sm" data-act="signin">Sign in to make picks</button>') + "</div></div></div>" +
       '<div id="cfp-share"></div>' +
       (S.data.source === "seed" ? '<p class="cfp-note">Schedule and results are the hand-checked set through ' + shortDate(S.data.through) +
         '. Kickoff times appear once the ESPN feed runs.</p>' : '<p class="cfp-note">Schedule and results from ESPN, updated ' +
@@ -423,8 +425,16 @@
   // ---------- Events ----------
   function wire(app) {
     app.onclick = async function (e) {
+      if (e.target.id === "cfp-signin-sheet") { closeSignIn(); return; }
       var b = e.target.closest("button, [data-act]");
       if (!b || b.disabled) return;
+      if (!DB.user() && (b.dataset.game || b.dataset.resetWeek || b.dataset.act === "share" || b.dataset.act === "reset")) {
+        // Remember the tapped pick so it's waiting after sign-in.
+        if (b.dataset.game) { S.pending = b.dataset.game; S.picks[b.dataset.game] = b.dataset.team; try { localStorage.setItem(KEY, JSON.stringify(S.picks)); } catch (x) {} }
+        askSignIn(app); return;
+      }
+      if (b.dataset.act === "signin") { DB.signIn(); return; }
+      if (b.dataset.act === "close-signin") { closeSignIn(); return; }
       if (b.dataset.game) {
         var k = b.dataset.game, t = b.dataset.team;
         if (S.picks[k] === t) delete S.picks[k]; else S.picks[k] = t;
@@ -451,8 +461,7 @@
         // Locked picks stay; everything else clears.
         run().games.forEach(function (x) { if (x.locked && S.picks[x.game.id]) keep[x.game.id] = S.picks[x.game.id]; });
         S.picks = keep; persist(); draw(app);
-      } else if (act === "signin") DB.signIn();
-      else if (act === "share") openShare();
+      } else if (act === "share") openShare();
       else if (act === "to-bracket") document.getElementById("cfp-bracket").scrollIntoView({ block: "start" });
       else if (act === "close-share") document.getElementById("cfp-share").innerHTML = "";
       else if (act === "native-share" && S.shareFile) navigator.share({ files: [S.shareFile], text: "My CFP bracket. Build yours: https://cfatop25.com/cfp" }).catch(function () {});
@@ -481,6 +490,23 @@
       if (s.dataset && s.dataset.entry !== undefined && S.entry) { S.entry.rows[+s.dataset.entry] = { text: (S.entry.rows[+s.dataset.entry] || {}).text || "", id: s.value }; }
       if (s.id === "cfp-date" && S.entry) S.entry.date = s.value;
     };
+  }
+  // "Not now": drop the pick that was waiting for sign-in.
+  function closeSignIn() {
+    var m = document.getElementById("cfp-signin-sheet");
+    if (m) m.remove();
+    if (S.pending) { delete S.picks[S.pending]; S.pending = null; try { localStorage.setItem(KEY, JSON.stringify(S.picks)); } catch (x) {} }
+  }
+  function askSignIn(app) {
+    if (document.getElementById("cfp-signin-sheet")) return;
+    var d = document.createElement("div");
+    d.id = "cfp-signin-sheet"; d.className = "cfp-sheet"; d.setAttribute("role", "dialog"); d.setAttribute("aria-label", "Sign in to make picks");
+    d.innerHTML = '<div class="cfp-sheet-card"><h2>Sign in to make your picks</h2>' +
+      '<p class="panel-note">Free with Google. Your picks save to your account and follow you to any device. The pick you just tapped will be waiting.</p>' +
+      '<div class="cfp-btns"><button type="button" class="btn btn-primary" data-act="signin">Sign in with Google</button>' +
+      '<button type="button" class="btn btn-ghost" data-act="close-signin">Not now</button></div></div>';
+    app.querySelector(".cfp").appendChild(d);
+    d.querySelector("[data-act=signin]").focus();
   }
   function confirmReset(b) {
     if (b.dataset.armed) return true;
