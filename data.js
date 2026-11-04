@@ -319,6 +319,16 @@ window.team = (function () {
       var res = await sb.from("cfp_picks").upsert({ user_id: u.id, season: CFA.SEASON, picks: picks, updated_at: new Date().toISOString() }, { onConflict: "user_id,season" });
       return !res.error;
     },
+    // Admins only: how many people have saved projector picks (all time and in the last 24 hours)
+    cfpPickCount: async function () {
+      var day = new Date(Date.now() - 86400000).toISOString();
+      var r = await Promise.all([
+        sb.from("cfp_picks").select("user_id", { count: "exact", head: true }).eq("season", CFA.SEASON),
+        sb.from("cfp_picks").select("user_id", { count: "exact", head: true }).eq("season", CFA.SEASON).gte("updated_at", day)
+      ]);
+      if (r[0].error) return null;
+      return { total: r[0].count || 0, day: r[1].count || 0 };
+    },
     // Admins only: how many people picked each side of each game
     cfpPickStats: async function () {
       var res = await sb.rpc("cfp_pick_stats", { p_season: CFA.SEASON });
